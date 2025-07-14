@@ -1003,33 +1003,73 @@ class InfiniteCanvas {
             const touchedElement = this.getElementAtPosition(this.mouse.worldX, this.mouse.worldY);
             
             if (touchedElement) {
-                // Check if touched element is part of multi-selection
-                if (this.selectedElements.has(touchedElement) && this.selectedElements.size > 1) {
-                    // Prepare for multi-element drag
+                // Check if element is in a visible, unlocked layer
+                const layer = this.layers.find(l => l.id === touchedElement.layerId);
+                if (!layer || !layer.visible || layer.locked) {
+                    // Element is not selectable, start panning instead
+                    this.selectedElements.clear();
+                    this.selectedElement = null;
+                    this.hideColorPicker();
+                    this.mouse.isDragging = true;
+                    this.mouse.dragStartX = this.mouse.x;
+                    this.mouse.dragStartY = this.mouse.y;
+                    this.mouse.cameraStartX = this.camera.x;
+                    this.mouse.cameraStartY = this.camera.y;
+                    return;
+                }
+                
+                // Handle element selection and dragging directly
+                if (this.selectedElements.has(touchedElement)) {
+                    // Element is already selected - prepare for dragging
                     this.selectedElement = touchedElement;
                     this.mouse.isDragging = true;
-                    this.mouse.dragStartX = this.mouse.worldX - touchedElement.x;
-                    this.mouse.dragStartY = this.mouse.worldY - touchedElement.y;
+                    this.mouse.dragStartX = this.mouse.x;
+                    this.mouse.dragStartY = this.mouse.y;
+                    
+                    // Store initial positions for all selected elements
+                    this.selectedElements.forEach(element => {
+                        if (!element.initialPosition) {
+                            element.initialPosition = { x: element.x, y: element.y };
+                        }
+                    });
+                    
+                    // Send shape selection notification
+                    this.sendUpdate('shapeSelect', { 
+                        id: touchedElement.id,
+                        action: 'selected'
+                    });
                 } else {
-                    // Simulate mouse down for element selection
-                    const mouseEvent = {
-                        clientX: e.touches[0].clientX,
-                        clientY: e.touches[0].clientY,
-                        ctrlKey: false,
-                        metaKey: false,
-                        detail: 1
-                    };
-                    this.handleMouseDown(mouseEvent);
+                    // Select the touched element
+                    this.selectedElements.clear();
+                    this.selectedElements.add(touchedElement);
+                    this.selectedElement = touchedElement;
+                    this.hideColorPicker();
+                    
+                    // Prepare for potential dragging
+                    this.mouse.isDragging = true;
+                    this.mouse.dragStartX = this.mouse.x;
+                    this.mouse.dragStartY = this.mouse.y;
+                    touchedElement.initialPosition = { x: touchedElement.x, y: touchedElement.y };
+                    
+                    // Send shape selection notification
+                    this.sendUpdate('shapeSelect', { 
+                        id: touchedElement.id,
+                        action: 'selected'
+                    });
+                    
+                    console.log('Touch selected element:', touchedElement.id);
                 }
+                this.render();
             } else {
-                // Start panning
+                // Start panning (no element touched)
+                this.selectedElements.clear();
+                this.selectedElement = null;
+                this.hideColorPicker();
                 this.mouse.isDragging = true;
                 this.mouse.dragStartX = this.mouse.x;
                 this.mouse.dragStartY = this.mouse.y;
                 this.mouse.cameraStartX = this.camera.x;
                 this.mouse.cameraStartY = this.camera.y;
-                this.selectedElement = null;
-                this.selectedElements.clear();
             }
         } else if (this.touches.length === 2) {
             // Two finger touch - prepare for pinch zoom
@@ -1087,12 +1127,32 @@ class InfiniteCanvas {
             }
             
             if (this.selectedElement && this.mouse.isDragging) {
-                // Moving selected element
-                const mouseEvent = {
-                    clientX: e.touches[0].clientX,
-                    clientY: e.touches[0].clientY
-                };
-                this.handleMouseMove(mouseEvent);
+                // Moving selected element(s) directly
+                const deltaX = (this.mouse.x - this.mouse.dragStartX) / this.camera.zoom;
+                const deltaY = (this.mouse.y - this.mouse.dragStartY) / this.camera.zoom;
+                
+                this.selectedElements.forEach(element => {
+                    if (element.initialPosition) {
+                        element.x = element.initialPosition.x + deltaX;
+                        element.y = element.initialPosition.y + deltaY;
+                        
+                        // Apply snap to grid if enabled
+                        if (this.snapToGrid) {
+                            element.x = Math.round(element.x / this.gridSize) * this.gridSize;
+                            element.y = Math.round(element.y / this.gridSize) * this.gridSize;
+                        }
+                        
+                        // Send live movement update
+                        this.sendUpdate('move', {
+                            id: element.id,
+                            x: element.x,
+                            y: element.y,
+                            action: 'moving'
+                        });
+                    }
+                });
+                
+                this.render();
             } else if (this.mouse.isDragging) {
                 // Panning the canvas
                 const deltaX = (this.mouse.x - this.mouse.dragStartX) / this.camera.zoom;
@@ -1162,12 +1222,18 @@ class InfiniteCanvas {
                 this.resizeHandle = null;
                 this.canvas.className = '';
             } else if (this.selectedElement && this.mouse.isDragging) {
-                // Finish element manipulation
-                const mouseEvent = {
-                    clientX: e.changedTouches[0].clientX,
-                    clientY: e.changedTouches[0].clientY
-                };
-                this.handleMouseUp(mouseEvent);
+                // Finish element movement - send final updates and save to history
+                this.selectedElements.forEach(element => {
+                    this.sendUpdate('update', element);
+                    this.sendUpdate('shapeRelease', { id: element.id });
+                    // Clean up initial position
+                    delete element.initialPosition;
+                });
+                this.saveToHistory('Move elements');
+                this.mouse.isDragging = false;
+                this.mouse.dragButton = null;
+                this.canvas.style.cursor = '';
+                console.log('Touch move completed for', this.selectedElements.size, 'elements');
             } else {
                 // Finish panning
                 this.mouse.isDragging = false;
