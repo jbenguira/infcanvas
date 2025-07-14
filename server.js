@@ -64,6 +64,8 @@ function initRoomState() {
             locked: false,
             elements: []
         }],
+        password: '',
+        isPasswordProtected: false,
         timestamp: new Date().toISOString()
     };
 }
@@ -108,6 +110,14 @@ async function loadRoomState(roomName) {
                 locked: false,
                 elements: []
             }];
+        }
+        
+        // Ensure password fields exist (backward compatibility)
+        if (loadedState.password === undefined) {
+            loadedState.password = '';
+        }
+        if (loadedState.isPasswordProtected === undefined) {
+            loadedState.isPasswordProtected = loadedState.password.length > 0;
         }
         
         roomStates.set(roomName, loadedState);
@@ -255,6 +265,9 @@ function applyUpdate(update, roomName) {
                 console.log(`Updated layer in room "${roomName}": ${data.name || state.layers[layerUpdateIndex].name}`);
             }
             break;
+        case 'roomPasswordChanged':
+            // Handle room password change notifications (broadcast only, no state change)
+            break;
         case 'camera':
             state.camera = data;
             break;
@@ -286,6 +299,7 @@ wss.on('connection', (ws) => {
             // Handle room join
             if (update.type === 'joinRoom') {
                 roomName = update.data.roomName;
+                const providedPassword = update.data.password || '';
                 
                 // Validate room name
                 if (!validateRoomName(roomName)) {
@@ -296,19 +310,36 @@ wss.on('connection', (ws) => {
                     return;
                 }
                 
-                // Store room name on the WebSocket connection
-                ws.roomName = roomName;
-                
                 // Load or create room state
                 const roomState = await loadRoomState(roomName);
+                
+                // Check password if room is protected
+                if (roomState.isPasswordProtected && roomState.password !== providedPassword) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        data: { message: 'Incorrect password for this room' }
+                    }));
+                    return;
+                }
+                
+                // Store room name on the WebSocket connection
+                ws.roomName = roomName;
                 
                 // Ensure layers array exists before sending to client
                 ensureLayersArray(roomName);
                 
-                // Send current room state to new client
+                // Send current room state to new client (without password)
+                const clientState = {
+                    elements: roomState.elements,
+                    camera: roomState.camera,
+                    layers: roomState.layers,
+                    isPasswordProtected: roomState.isPasswordProtected,
+                    timestamp: roomState.timestamp
+                };
+                
                 ws.send(JSON.stringify({
                     type: 'init',
-                    data: roomState
+                    data: clientState
                 }));
                 
                 console.log(`Client joined room: ${roomName}`);
@@ -390,6 +421,70 @@ wss.on('connection', (ws) => {
 });
 
 // REST API endpoints
+app.get('/api/room/:roomName/check', async (req, res) => {
+    try {
+        const roomName = req.params.roomName;
+        if (!validateRoomName(roomName)) {
+            return res.status(400).json({ error: 'Invalid room name' });
+        }
+        
+        // Check if room exists and if it requires a password
+        try {
+            const filePath = getRoomFilePath(roomName);
+            const data = await fs.readFile(filePath, 'utf8');
+            const roomState = JSON.parse(data);
+            
+            res.json({ 
+                exists: true, 
+                requiresPassword: roomState.isPasswordProtected || false 
+            });
+        } catch (error) {
+            if (error.code === 'ENOENT') {
+                // Room doesn't exist yet
+                res.json({ exists: false, requiresPassword: false });
+            } else {
+                throw error;
+            }
+        }
+    } catch (error) {
+        console.error('Error checking room:', error);
+        res.status(500).json({ error: 'Failed to check room' });
+    }
+});
+
+app.post('/api/room/:roomName/password', async (req, res) => {
+    try {
+        const roomName = req.params.roomName;
+        const { password } = req.body;
+        
+        if (!validateRoomName(roomName)) {
+            return res.status(400).json({ error: 'Invalid room name' });
+        }
+        
+        // Load room state
+        const roomState = await loadRoomState(roomName);
+        
+        // Update password
+        roomState.password = password || '';
+        roomState.isPasswordProtected = roomState.password.length > 0;
+        roomState.timestamp = new Date().toISOString();
+        
+        // Save updated state
+        await saveRoomState(roomName);
+        
+        res.json({ 
+            success: true, 
+            isPasswordProtected: roomState.isPasswordProtected 
+        });
+        
+        console.log(`Password ${roomState.isPasswordProtected ? 'enabled' : 'disabled'} for room: ${roomName}`);
+        
+    } catch (error) {
+        console.error('Error setting room password:', error);
+        res.status(500).json({ error: 'Failed to set room password' });
+    }
+});
+
 app.get('/api/room/generate', (req, res) => {
     const roomName = generateRoomName();
     res.json({ roomName });

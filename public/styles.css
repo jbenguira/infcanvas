@@ -295,6 +295,33 @@ button:hover {
     box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
 }
 
+.lock-icon {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.lock-icon.locked {
+    background: #dc3545;
+    color: white;
+    border-color: #dc3545;
+}
+
+.lock-icon.unlocked:hover {
+    background: #e9ecef;
+    border-color: #007bff;
+}
+
+.lock-icon.locked:hover {
+    background: #c82333;
+    border-color: #c82333;
+}
+
 .username {
     background: #f8f9fa;
     border: 1px solid #ddd;

@@ -65,6 +65,8 @@ class InfiniteCanvas {
         // Room functionality
         this.roomName = null;
         this.isJoiningRoom = false;
+        this.roomPassword = null;
+        this.isPasswordProtected = false;
         
         this.userId = 'user_' + Math.random().toString(36).substr(2, 9);
         this.userName = this.generateRandomName();
@@ -290,6 +292,7 @@ class InfiniteCanvas {
         document.getElementById('clearAll').addEventListener('click', () => this.clearAllElements());
         document.getElementById('username').addEventListener('click', () => this.editUsername());
         document.getElementById('roomName').addEventListener('click', () => this.editRoomName());
+        document.getElementById('lockIcon').addEventListener('click', () => this.toggleRoomPassword());
         
         // History controls
         document.getElementById('undoBtn').addEventListener('click', () => this.undo());
@@ -2632,13 +2635,7 @@ class InfiniteCanvas {
             
             // Join room first
             if (this.ws.readyState === WebSocket.OPEN && this.roomName) {
-                this.isJoiningRoom = true;
-                this.ws.send(JSON.stringify({
-                    type: 'joinRoom',
-                    data: {
-                        roomName: this.roomName
-                    }
-                }));
+                this.joinRoomWithPassword();
             }
         };
         
@@ -2684,6 +2681,20 @@ class InfiniteCanvas {
             case 'error':
                 console.error('Server error:', data.message);
                 this.updateConnectionStatus('Error: ' + data.message);
+                
+                // Handle password authentication errors
+                if (data.message && data.message.includes('password')) {
+                    this.isJoiningRoom = false;
+                    // Remove stored password since it's incorrect
+                    localStorage.removeItem(`room_password_${this.roomName}`);
+                    
+                    alert('Incorrect password. Please try again.');
+                    
+                    // Re-attempt to join with new password
+                    setTimeout(() => {
+                        this.joinRoomWithPassword();
+                    }, 100);
+                }
                 break;
                 
             case 'init':
@@ -2721,6 +2732,10 @@ class InfiniteCanvas {
                     elements: []
                 }];
                 this.activeLayerId = this.layers[0].id;
+                
+                // Update password protection status
+                this.isPasswordProtected = data.isPasswordProtected || false;
+                this.updateLockIcon();
                 
                 // Rebuild layer-element relationships
                 this.rebuildLayerElementRelationships();
@@ -2935,6 +2950,14 @@ class InfiniteCanvas {
                 }
                 break;
                 
+            case 'roomPasswordChanged':
+                // Another user changed the room password protection
+                this.isPasswordProtected = data.isPasswordProtected;
+                this.updateLockIcon();
+                const passwordStatus = data.isPasswordProtected ? 'enabled' : 'disabled';
+                this.showTemporaryMessage(`Room password protection ${passwordStatus} by another user`);
+                break;
+                
             case 'camera':
                 // Another user changed camera view (optional - could be disabled for privacy)
                 // this.camera = data;
@@ -3081,6 +3104,137 @@ class InfiniteCanvas {
         if (confirmed) {
             // Update URL hash to trigger room switch
             window.location.hash = trimmedName;
+        }
+    }
+    
+    async toggleRoomPassword() {
+        if (this.isPasswordProtected) {
+            // Room is currently password protected - ask to remove password
+            const confirmed = confirm(
+                'Remove password protection from this room?\n\n' +
+                'Anyone will be able to access this room without a password.'
+            );
+            
+            if (confirmed) {
+                await this.setRoomPassword('');
+            }
+        } else {
+            // Room is not password protected - ask to set password
+            const password = prompt(
+                'Set password for this room:\n\n' +
+                'Leave empty to cancel.\n' +
+                'Password will be required to access this room.'
+            );
+            
+            if (password !== null) {
+                await this.setRoomPassword(password.trim());
+            }
+        }
+    }
+    
+    async setRoomPassword(password) {
+        try {
+            const response = await fetch(`/api/room/${this.roomName}/password`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ password })
+            });
+            
+            if (response.ok) {
+                this.isPasswordProtected = password.length > 0;
+                this.roomPassword = password;
+                this.updateLockIcon();
+                
+                // Store in localStorage for this room
+                if (password) {
+                    localStorage.setItem(`room_password_${this.roomName}`, password);
+                } else {
+                    localStorage.removeItem(`room_password_${this.roomName}`);
+                }
+                
+                // Send update to other users
+                this.sendUpdate('roomPasswordChanged', {
+                    isPasswordProtected: this.isPasswordProtected
+                });
+                
+                const message = password ? 
+                    'Password protection enabled for this room.' : 
+                    'Password protection removed from this room.';
+                alert(message);
+            } else {
+                const error = await response.json();
+                alert('Failed to update room password: ' + error.message);
+            }
+        } catch (error) {
+            console.error('Error setting room password:', error);
+            alert('Failed to update room password. Please try again.');
+        }
+    }
+    
+    async promptForRoomPassword(roomName) {
+        // Check if we have a stored password for this room
+        const storedPassword = localStorage.getItem(`room_password_${roomName}`);
+        if (storedPassword) {
+            return storedPassword;
+        }
+        
+        // Prompt user for password
+        const password = prompt(
+            `Room "${roomName}" is password protected.\n\n` +
+            'Enter the password to access this room:'
+        );
+        
+        return password;
+    }
+    
+    updateLockIcon() {
+        const lockIcon = document.getElementById('lockIcon');
+        if (this.isPasswordProtected) {
+            lockIcon.textContent = '🔒';
+            lockIcon.className = 'lock-icon locked';
+            lockIcon.title = 'Room is password protected - click to remove password';
+        } else {
+            lockIcon.textContent = '🔓';
+            lockIcon.className = 'lock-icon unlocked';
+            lockIcon.title = 'Room is not protected - click to set password';
+        }
+    }
+    
+    async joinRoomWithPassword() {
+        try {
+            this.isJoiningRoom = true;
+            
+            // First, check if the room requires a password
+            const checkResponse = await fetch(`/api/room/${this.roomName}/check`);
+            const checkData = await checkResponse.json();
+            
+            let password = null;
+            if (checkData.requiresPassword) {
+                password = await this.promptForRoomPassword(this.roomName);
+                if (password === null) {
+                    // User cancelled password prompt
+                    alert('Access cancelled. You will be redirected to a new room.');
+                    window.location.hash = '';
+                    window.location.reload();
+                    return;
+                }
+            }
+            
+            // Send join room request with password if needed
+            this.ws.send(JSON.stringify({
+                type: 'joinRoom',
+                data: {
+                    roomName: this.roomName,
+                    password: password
+                }
+            }));
+            
+        } catch (error) {
+            console.error('Error joining room:', error);
+            this.isJoiningRoom = false;
+            alert('Failed to join room. Please try again.');
         }
     }
     
