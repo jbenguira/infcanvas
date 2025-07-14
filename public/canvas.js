@@ -88,10 +88,16 @@ class InfiniteCanvas {
     }
     
     setupEventListeners() {
+        // Mouse events
         this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
         this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
         this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
         this.canvas.addEventListener('wheel', (e) => this.handleWheel(e));
+        
+        // Touch events for mobile
+        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
+        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
+        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e), { passive: false });
         
         document.querySelectorAll('.shape-btn').forEach(btn => {
             btn.addEventListener('click', (e) => this.selectShape(e.target.dataset.shape));
@@ -113,6 +119,9 @@ class InfiniteCanvas {
         
         // Snap to grid toggle
         document.getElementById('snapToggle').addEventListener('click', () => this.toggleSnapToGrid());
+        
+        // Side panel toggle for mobile
+        document.getElementById('sidePanelToggle').addEventListener('click', () => this.toggleSidePanel());
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyDown(e));
@@ -165,8 +174,35 @@ class InfiniteCanvas {
             this.mouse.worldY = Math.round(this.mouse.worldY / this.gridSize) * this.gridSize;
         }
         
-        document.getElementById('coordinates').textContent = 
-            `x: ${Math.round(this.mouse.worldX)}, y: ${Math.round(this.mouse.worldY)}`;
+        const coordsElement = document.getElementById('coordinates');
+        if (coordsElement) {
+            coordsElement.textContent = 
+                `x: ${Math.round(this.mouse.worldX)}, y: ${Math.round(this.mouse.worldY)}`;
+        }
+    }
+    
+    updateTouchPosition(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const touch = e.touches[0] || e.changedTouches[0];
+        
+        this.mouse.x = touch.clientX - rect.left;
+        this.mouse.y = touch.clientY - rect.top;
+        
+        const worldPos = this.screenToWorld(this.mouse.x, this.mouse.y);
+        this.mouse.worldX = worldPos.x;
+        this.mouse.worldY = worldPos.y;
+        
+        // Snap to grid if enabled
+        if (this.snapToGrid) {
+            this.mouse.worldX = Math.round(this.mouse.worldX / this.gridSize) * this.gridSize;
+            this.mouse.worldY = Math.round(this.mouse.worldY / this.gridSize) * this.gridSize;
+        }
+        
+        const coordsElement = document.getElementById('coordinates');
+        if (coordsElement) {
+            coordsElement.textContent = 
+                `x: ${Math.round(this.mouse.worldX)}, y: ${Math.round(this.mouse.worldY)}`;
+        }
     }
     
     // History Management
@@ -587,6 +623,53 @@ class InfiniteCanvas {
         }
     }
     
+    // Touch event handlers for mobile support
+    handleTouchStart(e) {
+        e.preventDefault();
+        this.updateTouchPosition(e);
+        
+        // Simulate mouse down
+        const mouseEvent = {
+            clientX: e.touches[0].clientX,
+            clientY: e.touches[0].clientY,
+            ctrlKey: false,
+            metaKey: false,
+            detail: 1
+        };
+        
+        this.handleMouseDown(mouseEvent);
+    }
+    
+    handleTouchMove(e) {
+        e.preventDefault();
+        this.updateTouchPosition(e);
+        
+        // Simulate mouse move
+        const mouseEvent = {
+            clientX: e.touches[0].clientX,
+            clientY: e.touches[0].clientY
+        };
+        
+        this.handleMouseMove(mouseEvent);
+    }
+    
+    handleTouchEnd(e) {
+        e.preventDefault();
+        
+        // If there are remaining touches, update position
+        if (e.touches.length > 0) {
+            this.updateTouchPosition(e);
+        }
+        
+        // Simulate mouse up
+        const mouseEvent = {
+            clientX: e.changedTouches[0].clientX,
+            clientY: e.changedTouches[0].clientY
+        };
+        
+        this.handleMouseUp(mouseEvent);
+    }
+    
     drawElement(element, screenPos) {
         this.ctx.save();
         this.ctx.translate(screenPos.x, screenPos.y);
@@ -756,7 +839,12 @@ class InfiniteCanvas {
         const w = this.selectedElement.width * this.camera.zoom;
         const h = this.selectedElement.height * this.camera.zoom;
         
-        const handleSize = 8;
+        // Larger handles for mobile
+        const isMobile = window.innerWidth <= 768;
+        const handleSize = isMobile ? 16 : 8;
+        const rotateRadius = isMobile ? 12 : 6;
+        const deleteSize = isMobile ? 20 : 12;
+        
         const left = screenPos.x - w/2;
         const right = screenPos.x + w/2;
         const top = screenPos.y - h/2;
@@ -774,24 +862,25 @@ class InfiniteCanvas {
         
         // Draw rotation handle
         this.ctx.fillStyle = '#28a745';
-        const rotateY = top - 20;
+        const rotateY = top - (isMobile ? 30 : 20);
         this.ctx.beginPath();
-        this.ctx.arc(screenPos.x, rotateY, 6, 0, Math.PI * 2);
+        this.ctx.arc(screenPos.x, rotateY, rotateRadius, 0, Math.PI * 2);
         this.ctx.fill();
         this.ctx.stroke();
         
         // Draw delete handle (trash icon)
         this.ctx.fillStyle = '#dc3545';
-        const deleteX = right + 15;
-        const deleteY = top - 5;
-        this.ctx.fillRect(deleteX, deleteY, 12, 12);
-        this.ctx.strokeRect(deleteX, deleteY, 12, 12);
+        const deleteX = right + (isMobile ? 20 : 15);
+        const deleteY = top - (isMobile ? 10 : 5);
+        this.ctx.fillRect(deleteX, deleteY, deleteSize, deleteSize);
+        this.ctx.strokeRect(deleteX, deleteY, deleteSize, deleteSize);
         
         // Draw trash icon details
         this.ctx.fillStyle = '#fff';
-        this.ctx.fillRect(deleteX + 2, deleteY + 3, 8, 1);
-        this.ctx.fillRect(deleteX + 3, deleteY + 5, 2, 5);
-        this.ctx.fillRect(deleteX + 7, deleteY + 5, 2, 5);
+        const iconScale = isMobile ? 1.6 : 1;
+        this.ctx.fillRect(deleteX + 2 * iconScale, deleteY + 3 * iconScale, 8 * iconScale, 1 * iconScale);
+        this.ctx.fillRect(deleteX + 3 * iconScale, deleteY + 5 * iconScale, 2 * iconScale, 5 * iconScale);
+        this.ctx.fillRect(deleteX + 7 * iconScale, deleteY + 5 * iconScale, 2 * iconScale, 5 * iconScale);
     }
     
     drawHandle(x, y, size) {
@@ -824,13 +913,13 @@ class InfiniteCanvas {
         const w = this.selectedElement.width * this.camera.zoom;
         const h = this.selectedElement.height * this.camera.zoom;
         
-        const handleSize = 8;
+        // Larger handles for mobile
+        const isMobile = window.innerWidth <= 768;
+        const handleSize = isMobile ? 16 : 8;
         const left = screenPos.x - w/2;
         const right = screenPos.x + w/2;
         const top = screenPos.y - h/2;
         const bottom = screenPos.y + h/2;
-        
-        const tolerance = handleSize;
         
         // Check each corner handle
         if (this.isPointInRect(screenX, screenY, left - handleSize/2, top - handleSize/2, handleSize, handleSize)) return 'nw';
@@ -853,13 +942,17 @@ class InfiniteCanvas {
         const screenPos = this.worldToScreen(this.selectedElement.x, this.selectedElement.y);
         const w = this.selectedElement.width * this.camera.zoom;
         
+        const isMobile = window.innerWidth <= 768;
+        const rotateRadius = isMobile ? 12 : 6;
+        const rotateDistance = isMobile ? 30 : 20;
+        
         const rotateX = screenPos.x;
-        const rotateY = screenPos.y - w/2 - 20;
+        const rotateY = screenPos.y - w/2 - rotateDistance;
         
         const dx = screenX - rotateX;
         const dy = screenY - rotateY;
         
-        return (dx * dx + dy * dy <= 36); // 6px radius
+        return (dx * dx + dy * dy <= rotateRadius * rotateRadius);
     }
     
     isPointInRect(px, py, x, y, w, h) {
@@ -879,10 +972,15 @@ class InfiniteCanvas {
         const w = this.selectedElement.width * this.camera.zoom;
         const h = this.selectedElement.height * this.camera.zoom;
         
-        const deleteX = screenPos.x + w/2 + 15;
-        const deleteY = screenPos.y - h/2 - 5;
+        const isMobile = window.innerWidth <= 768;
+        const deleteSize = isMobile ? 20 : 12;
+        const deleteDistance = isMobile ? 20 : 15;
+        const deleteOffset = isMobile ? 10 : 5;
         
-        return this.isPointInRect(screenX, screenY, deleteX, deleteY, 12, 12);
+        const deleteX = screenPos.x + w/2 + deleteDistance;
+        const deleteY = screenPos.y - h/2 - deleteOffset;
+        
+        return this.isPointInRect(screenX, screenY, deleteX, deleteY, deleteSize, deleteSize);
     }
     
     deleteSelectedElements() {
@@ -1204,6 +1302,20 @@ class InfiniteCanvas {
         toggle.classList.toggle('active', this.snapToGrid);
         toggle.textContent = this.snapToGrid ? '✓ Snap' : 'Snap';
         console.log('Snap to grid:', this.snapToGrid);
+    }
+    
+    // Mobile side panel toggle
+    toggleSidePanel() {
+        const sidePanel = document.getElementById('sidePanel');
+        const toggle = document.getElementById('sidePanelToggle');
+        
+        if (sidePanel.classList.contains('expanded')) {
+            sidePanel.classList.remove('expanded');
+            toggle.textContent = '📋';
+        } else {
+            sidePanel.classList.add('expanded');
+            toggle.textContent = '✖';
+        }
     }
     
     setupWebSocket() {
@@ -2261,4 +2373,22 @@ document.addEventListener('DOMContentLoaded', () => {
             canvas.hideExportDialog();
         }
     });
+    
+    // Auto-collapse side panel on mobile
+    function handleResize() {
+        const sidePanel = document.getElementById('sidePanel');
+        const toggle = document.getElementById('sidePanelToggle');
+        
+        if (window.innerWidth <= 768) {
+            sidePanel.classList.remove('expanded');
+            if (toggle) toggle.textContent = '📋';
+        } else {
+            sidePanel.classList.remove('expanded');
+            if (toggle) toggle.textContent = '📋';
+        }
+    }
+    
+    // Handle window resize
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Initial check
 });
