@@ -315,6 +315,7 @@ class InfiniteCanvas {
         if (rotateHandle) {
             this.isRotating = true;
             this.canvas.className = 'rotating';
+            this.lastRotationAngle = null; // Initialize rotation tracking
             return;
         }
         
@@ -343,9 +344,16 @@ class InfiniteCanvas {
                     this.selectedElement = clickedElement;
                 }
             } else {
-                this.selectedElements.clear();
-                this.selectedElements.add(clickedElement);
-                this.selectedElement = clickedElement;
+                // Check if clicked element is already part of multi-selection
+                if (this.selectedElements.has(clickedElement) && this.selectedElements.size > 1) {
+                    // Don't change selection, just prepare for multi-element drag
+                    this.selectedElement = clickedElement; // Make clicked element the primary
+                } else {
+                    // Single selection
+                    this.selectedElements.clear();
+                    this.selectedElements.add(clickedElement);
+                    this.selectedElement = clickedElement;
+                }
             }
             
             this.mouse.isDragging = true;
@@ -395,14 +403,16 @@ class InfiniteCanvas {
         }
         
         if (this.isRotating && this.selectedElement) {
-            this.rotateElement();
-            // Send live rotate update
-            this.sendUpdate('move', {
-                id: this.selectedElement.id,
-                x: this.selectedElement.x,
-                y: this.selectedElement.y,
-                rotation: this.selectedElement.rotation,
-                action: 'rotating'
+            this.rotateElements();
+            // Send live rotate update for all selected elements
+            this.selectedElements.forEach(element => {
+                this.sendUpdate('move', {
+                    id: element.id,
+                    x: element.x,
+                    y: element.y,
+                    rotation: element.rotation,
+                    action: 'rotating'
+                });
             });
             this.render();
             return;
@@ -411,24 +421,29 @@ class InfiniteCanvas {
         if (this.mouse.isDragging) {
             if (this.selectedElement && !this.isSelecting) {
                 // Move selected elements
-                const deltaX = this.mouse.worldX - this.mouse.dragStartX - this.selectedElement.x;
-                const deltaY = this.mouse.worldY - this.mouse.dragStartY - this.selectedElement.y;
+                const newX = this.mouse.worldX - this.mouse.dragStartX;
+                const newY = this.mouse.worldY - this.mouse.dragStartY;
                 
+                const deltaX = newX - this.selectedElement.x;
+                const deltaY = newY - this.selectedElement.y;
+                
+                console.log(`Moving ${this.selectedElements.size} elements by delta (${deltaX}, ${deltaY})`);
+                
+                // Move all selected elements by the same delta
                 this.selectedElements.forEach(element => {
                     element.x += deltaX;
                     element.y += deltaY;
+                    console.log(`Element ${element.id} moved to (${element.x}, ${element.y})`);
                 });
                 
-                // Update the primary selected element position
-                this.selectedElement.x = this.mouse.worldX - this.mouse.dragStartX;
-                this.selectedElement.y = this.mouse.worldY - this.mouse.dragStartY;
-                
-                // Send live movement update
-                this.sendUpdate('move', {
-                    id: this.selectedElement.id,
-                    x: this.selectedElement.x,
-                    y: this.selectedElement.y,
-                    action: 'moving'
+                // Send live movement update for all selected elements
+                this.selectedElements.forEach(element => {
+                    this.sendUpdate('move', {
+                        id: element.id,
+                        x: element.x,
+                        y: element.y,
+                        action: 'moving'
+                    });
                 });
             } else if (this.isSelecting) {
                 // Update selection box
@@ -459,17 +474,31 @@ class InfiniteCanvas {
         }
         
         if (this.mouse.isDragging && this.selectedElement) {
-            this.sendUpdate('update', this.selectedElement);
-            // Clear shape user tracking when done moving
-            this.sendUpdate('shapeRelease', { id: this.selectedElement.id });
+            // Send update for all selected elements
+            this.selectedElements.forEach(element => {
+                this.sendUpdate('update', element);
+                this.sendUpdate('shapeRelease', { id: element.id });
+            });
             this.saveToHistory('Move elements');
         }
         
         if (this.isResizing || this.isRotating) {
-            this.sendUpdate('update', this.selectedElement);
-            // Clear shape user tracking when done resizing/rotating
-            this.sendUpdate('shapeRelease', { id: this.selectedElement.id });
-            this.saveToHistory(this.isResizing ? 'Resize element' : 'Rotate element');
+            if (this.isRotating) {
+                // Send update for all selected elements after rotation
+                this.selectedElements.forEach(element => {
+                    this.sendUpdate('update', element);
+                    this.sendUpdate('shapeRelease', { id: element.id });
+                });
+                this.saveToHistory('Rotate elements');
+                this.lastRotationAngle = null; // Reset rotation tracking
+                this.initialElementPositions = null;
+                this.initialElementRotations = null;
+            } else {
+                // Resize only affects primary element
+                this.sendUpdate('update', this.selectedElement);
+                this.sendUpdate('shapeRelease', { id: this.selectedElement.id });
+                this.saveToHistory('Resize element');
+            }
         }
         
         this.mouse.isDragging = false;
@@ -549,8 +578,8 @@ class InfiniteCanvas {
         // Draw multi-selection highlights
         this.drawMultiSelectionHighlights();
         
-        // Draw resize handles for primary selection (only if element is in visible layer)
-        if (this.selectedElement && this.isElementInVisibleLayer(this.selectedElement)) {
+        // Draw resize handles for selection (single element or multi-element)
+        if (this.selectedElements.size > 0) {
             this.drawResizeHandles();
         }
         
@@ -670,15 +699,24 @@ class InfiniteCanvas {
             const touchedElement = this.getElementAtPosition(this.mouse.worldX, this.mouse.worldY);
             
             if (touchedElement) {
-                // Simulate mouse down for element selection
-                const mouseEvent = {
-                    clientX: e.touches[0].clientX,
-                    clientY: e.touches[0].clientY,
-                    ctrlKey: false,
-                    metaKey: false,
-                    detail: 1
-                };
-                this.handleMouseDown(mouseEvent);
+                // Check if touched element is part of multi-selection
+                if (this.selectedElements.has(touchedElement) && this.selectedElements.size > 1) {
+                    // Prepare for multi-element drag
+                    this.selectedElement = touchedElement;
+                    this.mouse.isDragging = true;
+                    this.mouse.dragStartX = this.mouse.worldX - touchedElement.x;
+                    this.mouse.dragStartY = this.mouse.worldY - touchedElement.y;
+                } else {
+                    // Simulate mouse down for element selection
+                    const mouseEvent = {
+                        clientX: e.touches[0].clientX,
+                        clientY: e.touches[0].clientY,
+                        ctrlKey: false,
+                        metaKey: false,
+                        detail: 1
+                    };
+                    this.handleMouseDown(mouseEvent);
+                }
             } else {
                 // Start panning
                 this.mouse.isDragging = true;
@@ -726,15 +764,17 @@ class InfiniteCanvas {
             }
             
             if (this.isRotating && this.selectedElement) {
-                // Rotating element
-                this.rotateElement();
-                // Send live rotate update
-                this.sendUpdate('move', {
-                    id: this.selectedElement.id,
-                    x: this.selectedElement.x,
-                    y: this.selectedElement.y,
-                    rotation: this.selectedElement.rotation,
-                    action: 'rotating'
+                // Rotating elements
+                this.rotateElements();
+                // Send live rotate update for all selected elements
+                this.selectedElements.forEach(element => {
+                    this.sendUpdate('move', {
+                        id: element.id,
+                        x: element.x,
+                        y: element.y,
+                        rotation: element.rotation,
+                        action: 'rotating'
+                    });
                 });
                 this.render();
                 return;
@@ -795,10 +835,21 @@ class InfiniteCanvas {
             // All touches ended
             if (this.isResizing || this.isRotating) {
                 // Finish resizing/rotating
-                if (this.selectedElement) {
+                if (this.isRotating) {
+                    // Send update for all selected elements after rotation
+                    this.selectedElements.forEach(element => {
+                        this.sendUpdate('update', element);
+                        this.sendUpdate('shapeRelease', { id: element.id });
+                    });
+                    this.saveToHistory('Rotate elements');
+                    this.lastRotationAngle = null; // Reset rotation tracking
+                this.initialElementPositions = null;
+                this.initialElementRotations = null;
+                } else if (this.selectedElement) {
+                    // Resize only affects primary element
                     this.sendUpdate('update', this.selectedElement);
                     this.sendUpdate('shapeRelease', { id: this.selectedElement.id });
-                    this.saveToHistory(this.isResizing ? 'Resize element' : 'Rotate element');
+                    this.saveToHistory('Resize element');
                 }
                 this.isResizing = false;
                 this.isRotating = false;
@@ -1015,54 +1066,89 @@ class InfiniteCanvas {
     }
     
     drawResizeHandles() {
-        if (!this.selectedElement) return;
+        if (this.selectedElements.size === 0) return;
         
-        const screenPos = this.worldToScreen(this.selectedElement.x, this.selectedElement.y);
-        const w = this.selectedElement.width * this.camera.zoom;
-        const h = this.selectedElement.height * this.camera.zoom;
-        
-        // Larger handles for mobile
         const isMobile = window.innerWidth <= 768;
         const handleSize = isMobile ? 16 : 8;
         const rotateRadius = isMobile ? 12 : 6;
         const deleteSize = isMobile ? 20 : 12;
         
-        const left = screenPos.x - w/2;
-        const right = screenPos.x + w/2;
-        const top = screenPos.y - h/2;
-        const bottom = screenPos.y + h/2;
-        
-        this.ctx.fillStyle = '#007bff';
-        this.ctx.strokeStyle = '#fff';
-        this.ctx.lineWidth = 1;
-        
-        // Draw corner handles
-        this.drawHandle(left - handleSize/2, top - handleSize/2, handleSize);
-        this.drawHandle(right - handleSize/2, top - handleSize/2, handleSize);
-        this.drawHandle(left - handleSize/2, bottom - handleSize/2, handleSize);
-        this.drawHandle(right - handleSize/2, bottom - handleSize/2, handleSize);
-        
-        // Draw rotation handle
-        this.ctx.fillStyle = '#28a745';
-        const rotateY = top - (isMobile ? 30 : 20);
-        this.ctx.beginPath();
-        this.ctx.arc(screenPos.x, rotateY, rotateRadius, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.stroke();
-        
-        // Draw delete handle (trash icon)
-        this.ctx.fillStyle = '#dc3545';
-        const deleteX = right + (isMobile ? 20 : 15);
-        const deleteY = top - (isMobile ? 10 : 5);
-        this.ctx.fillRect(deleteX, deleteY, deleteSize, deleteSize);
-        this.ctx.strokeRect(deleteX, deleteY, deleteSize, deleteSize);
-        
-        // Draw trash icon details
-        this.ctx.fillStyle = '#fff';
-        const iconScale = isMobile ? 1.6 : 1;
-        this.ctx.fillRect(deleteX + 2 * iconScale, deleteY + 3 * iconScale, 8 * iconScale, 1 * iconScale);
-        this.ctx.fillRect(deleteX + 3 * iconScale, deleteY + 5 * iconScale, 2 * iconScale, 5 * iconScale);
-        this.ctx.fillRect(deleteX + 7 * iconScale, deleteY + 5 * iconScale, 2 * iconScale, 5 * iconScale);
+        if (this.selectedElements.size === 1) {
+            // Single element - draw resize handles, rotation handle, and delete handle
+            const element = this.selectedElement;
+            const screenPos = this.worldToScreen(element.x, element.y);
+            const w = element.width * this.camera.zoom;
+            const h = element.height * this.camera.zoom;
+            
+            const left = screenPos.x - w/2;
+            const right = screenPos.x + w/2;
+            const top = screenPos.y - h/2;
+            const bottom = screenPos.y + h/2;
+            
+            this.ctx.fillStyle = '#007bff';
+            this.ctx.strokeStyle = '#fff';
+            this.ctx.lineWidth = 1;
+            
+            // Draw corner handles
+            this.drawHandle(left - handleSize/2, top - handleSize/2, handleSize);
+            this.drawHandle(right - handleSize/2, top - handleSize/2, handleSize);
+            this.drawHandle(left - handleSize/2, bottom - handleSize/2, handleSize);
+            this.drawHandle(right - handleSize/2, bottom - handleSize/2, handleSize);
+            
+            // Draw rotation handle
+            this.ctx.fillStyle = '#28a745';
+            const rotateY = top - (isMobile ? 30 : 20);
+            this.ctx.beginPath();
+            this.ctx.arc(screenPos.x, rotateY, rotateRadius, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.stroke();
+            
+            // Draw delete handle (trash icon)
+            this.ctx.fillStyle = '#dc3545';
+            const deleteX = right + (isMobile ? 20 : 15);
+            const deleteY = top - (isMobile ? 10 : 5);
+            this.ctx.fillRect(deleteX, deleteY, deleteSize, deleteSize);
+            this.ctx.strokeRect(deleteX, deleteY, deleteSize, deleteSize);
+            
+            // Draw trash icon details
+            this.ctx.fillStyle = '#fff';
+            const iconScale = isMobile ? 1.6 : 1;
+            this.ctx.fillRect(deleteX + 2 * iconScale, deleteY + 3 * iconScale, 8 * iconScale, 1 * iconScale);
+            this.ctx.fillRect(deleteX + 3 * iconScale, deleteY + 5 * iconScale, 2 * iconScale, 5 * iconScale);
+            this.ctx.fillRect(deleteX + 7 * iconScale, deleteY + 5 * iconScale, 2 * iconScale, 5 * iconScale);
+        } else {
+            // Multi-element selection - draw rotation handle at selection center
+            const selectionBounds = this.getSelectionBounds();
+            const centerScreen = this.worldToScreen(selectionBounds.centerX, selectionBounds.centerY);
+            
+            // Draw rotation handle at selection center
+            this.ctx.fillStyle = '#28a745';
+            this.ctx.strokeStyle = '#fff';
+            this.ctx.lineWidth = 1;
+            
+            const rotateDistance = isMobile ? 30 : 20;
+            const rotateX = centerScreen.x;
+            const rotateY = centerScreen.y - selectionBounds.height * this.camera.zoom / 2 - rotateDistance;
+            
+            this.ctx.beginPath();
+            this.ctx.arc(rotateX, rotateY, rotateRadius, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.stroke();
+            
+            // Draw delete handle for multi-selection
+            this.ctx.fillStyle = '#dc3545';
+            const deleteX = centerScreen.x + selectionBounds.width * this.camera.zoom / 2 + (isMobile ? 20 : 15);
+            const deleteY = centerScreen.y - selectionBounds.height * this.camera.zoom / 2 - (isMobile ? 10 : 5);
+            this.ctx.fillRect(deleteX, deleteY, deleteSize, deleteSize);
+            this.ctx.strokeRect(deleteX, deleteY, deleteSize, deleteSize);
+            
+            // Draw trash icon details
+            this.ctx.fillStyle = '#fff';
+            const iconScale = isMobile ? 1.6 : 1;
+            this.ctx.fillRect(deleteX + 2 * iconScale, deleteY + 3 * iconScale, 8 * iconScale, 1 * iconScale);
+            this.ctx.fillRect(deleteX + 3 * iconScale, deleteY + 5 * iconScale, 2 * iconScale, 5 * iconScale);
+            this.ctx.fillRect(deleteX + 7 * iconScale, deleteY + 5 * iconScale, 2 * iconScale, 5 * iconScale);
+        }
     }
     
     drawHandle(x, y, size) {
@@ -1113,28 +1199,43 @@ class InfiniteCanvas {
     }
     
     getRotateHandle(screenX, screenY) {
-        if (!this.selectedElement) return null;
-        
-        // Don't allow rotate handles if element is in hidden or locked layer
-        if (!this.isElementInVisibleLayer(this.selectedElement)) return null;
-        
-        const layer = this.layers.find(l => l.id === this.selectedElement.layerId);
-        if (layer && layer.locked) return null;
-        
-        const screenPos = this.worldToScreen(this.selectedElement.x, this.selectedElement.y);
-        const w = this.selectedElement.width * this.camera.zoom;
+        if (this.selectedElements.size === 0) return null;
         
         const isMobile = window.innerWidth <= 768;
         const rotateRadius = isMobile ? 12 : 6;
         const rotateDistance = isMobile ? 30 : 20;
         
-        const rotateX = screenPos.x;
-        const rotateY = screenPos.y - w/2 - rotateDistance;
-        
-        const dx = screenX - rotateX;
-        const dy = screenY - rotateY;
-        
-        return (dx * dx + dy * dy <= rotateRadius * rotateRadius);
+        if (this.selectedElements.size === 1) {
+            // Single element rotation handle
+            const element = this.selectedElement;
+            if (!this.isElementInVisibleLayer(element)) return null;
+            
+            const layer = this.layers.find(l => l.id === element.layerId);
+            if (layer && layer.locked) return null;
+            
+            const screenPos = this.worldToScreen(element.x, element.y);
+            const w = element.width * this.camera.zoom;
+            
+            const rotateX = screenPos.x;
+            const rotateY = screenPos.y - w/2 - rotateDistance;
+            
+            const dx = screenX - rotateX;
+            const dy = screenY - rotateY;
+            
+            return (dx * dx + dy * dy <= rotateRadius * rotateRadius);
+        } else {
+            // Multi-element rotation handle (at selection center)
+            const selectionBounds = this.getSelectionBounds();
+            const centerScreen = this.worldToScreen(selectionBounds.centerX, selectionBounds.centerY);
+            
+            const rotateX = centerScreen.x;
+            const rotateY = centerScreen.y - selectionBounds.height * this.camera.zoom / 2 - rotateDistance;
+            
+            const dx = screenX - rotateX;
+            const dy = screenY - rotateY;
+            
+            return (dx * dx + dy * dy <= rotateRadius * rotateRadius);
+        }
     }
     
     isPointInRect(px, py, x, y, w, h) {
@@ -1142,27 +1243,39 @@ class InfiniteCanvas {
     }
     
     getDeleteHandle(screenX, screenY) {
-        if (!this.selectedElement) return null;
-        
-        // Don't allow delete handles if element is in hidden or locked layer
-        if (!this.isElementInVisibleLayer(this.selectedElement)) return null;
-        
-        const layer = this.layers.find(l => l.id === this.selectedElement.layerId);
-        if (layer && layer.locked) return null;
-        
-        const screenPos = this.worldToScreen(this.selectedElement.x, this.selectedElement.y);
-        const w = this.selectedElement.width * this.camera.zoom;
-        const h = this.selectedElement.height * this.camera.zoom;
+        if (this.selectedElements.size === 0) return null;
         
         const isMobile = window.innerWidth <= 768;
         const deleteSize = isMobile ? 20 : 12;
         const deleteDistance = isMobile ? 20 : 15;
         const deleteOffset = isMobile ? 10 : 5;
         
-        const deleteX = screenPos.x + w/2 + deleteDistance;
-        const deleteY = screenPos.y - h/2 - deleteOffset;
-        
-        return this.isPointInRect(screenX, screenY, deleteX, deleteY, deleteSize, deleteSize);
+        if (this.selectedElements.size === 1) {
+            // Single element delete handle
+            const element = this.selectedElement;
+            if (!this.isElementInVisibleLayer(element)) return null;
+            
+            const layer = this.layers.find(l => l.id === element.layerId);
+            if (layer && layer.locked) return null;
+            
+            const screenPos = this.worldToScreen(element.x, element.y);
+            const w = element.width * this.camera.zoom;
+            const h = element.height * this.camera.zoom;
+            
+            const deleteX = screenPos.x + w/2 + deleteDistance;
+            const deleteY = screenPos.y - h/2 - deleteOffset;
+            
+            return this.isPointInRect(screenX, screenY, deleteX, deleteY, deleteSize, deleteSize);
+        } else {
+            // Multi-element delete handle
+            const selectionBounds = this.getSelectionBounds();
+            const centerScreen = this.worldToScreen(selectionBounds.centerX, selectionBounds.centerY);
+            
+            const deleteX = centerScreen.x + selectionBounds.width * this.camera.zoom / 2 + deleteDistance;
+            const deleteY = centerScreen.y - selectionBounds.height * this.camera.zoom / 2 - deleteOffset;
+            
+            return this.isPointInRect(screenX, screenY, deleteX, deleteY, deleteSize, deleteSize);
+        }
     }
     
     deleteSelectedElements() {
@@ -1250,11 +1363,105 @@ class InfiniteCanvas {
         element.y = (newTop + newBottom) / 2;
     }
     
-    rotateElement() {
-        const element = this.selectedElement;
-        const centerScreen = this.worldToScreen(element.x, element.y);
-        const angle = Math.atan2(this.mouse.y - centerScreen.y, this.mouse.x - centerScreen.x);
-        element.rotation = angle + Math.PI/2;
+    rotateElements() {
+        if (this.selectedElements.size === 1) {
+            // Single element rotation (around its center)
+            const element = this.selectedElement;
+            const centerScreen = this.worldToScreen(element.x, element.y);
+            const angle = Math.atan2(this.mouse.y - centerScreen.y, this.mouse.x - centerScreen.x);
+            element.rotation = angle + Math.PI/2;
+        } else {
+            // Multi-element rotation (around selection center)
+            const selectionCenter = this.getSelectionCenter();
+            const centerScreen = this.worldToScreen(selectionCenter.x, selectionCenter.y);
+            const currentAngle = Math.atan2(this.mouse.y - centerScreen.y, this.mouse.x - centerScreen.x);
+            
+            // Initialize rotation tracking on first call
+            if (this.lastRotationAngle === null) {
+                this.lastRotationAngle = currentAngle;
+                // Store initial positions and rotations
+                this.initialElementPositions = new Map();
+                this.initialElementRotations = new Map();
+                
+                this.selectedElements.forEach(element => {
+                    this.initialElementPositions.set(element.id, { x: element.x, y: element.y });
+                    this.initialElementRotations.set(element.id, element.rotation || 0);
+                });
+                return;
+            }
+            
+            const deltaAngle = currentAngle - this.lastRotationAngle;
+            
+            // Apply rotation to all selected elements
+            this.selectedElements.forEach(element => {
+                const initialPos = this.initialElementPositions.get(element.id);
+                const initialRot = this.initialElementRotations.get(element.id);
+                
+                if (initialPos) {
+                    // Rotate position around selection center
+                    const dx = initialPos.x - selectionCenter.x;
+                    const dy = initialPos.y - selectionCenter.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const initialAngle = Math.atan2(dy, dx);
+                    const totalRotation = currentAngle - this.lastRotationAngle;
+                    const newAngle = initialAngle + totalRotation;
+                    
+                    element.x = selectionCenter.x + Math.cos(newAngle) * distance;
+                    element.y = selectionCenter.y + Math.sin(newAngle) * distance;
+                    element.rotation = initialRot + totalRotation;
+                }
+            });
+        }
+    }
+    
+    getSelectionCenter() {
+        if (this.selectedElements.size === 0) return { x: 0, y: 0 };
+        
+        let totalX = 0;
+        let totalY = 0;
+        
+        this.selectedElements.forEach(element => {
+            totalX += element.x;
+            totalY += element.y;
+        });
+        
+        return {
+            x: totalX / this.selectedElements.size,
+            y: totalY / this.selectedElements.size
+        };
+    }
+    
+    getSelectionBounds() {
+        if (this.selectedElements.size === 0) return { x: 0, y: 0, width: 0, height: 0, centerX: 0, centerY: 0 };
+        
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+        
+        this.selectedElements.forEach(element => {
+            const halfWidth = element.width / 2;
+            const halfHeight = element.height / 2;
+            
+            minX = Math.min(minX, element.x - halfWidth);
+            maxX = Math.max(maxX, element.x + halfWidth);
+            minY = Math.min(minY, element.y - halfHeight);
+            maxY = Math.max(maxY, element.y + halfHeight);
+        });
+        
+        const width = maxX - minX;
+        const height = maxY - minY;
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        
+        return {
+            x: minX,
+            y: minY,
+            width: width,
+            height: height,
+            centerX: centerX,
+            centerY: centerY
+        };
     }
     
     startLabelEdit(element) {
@@ -1378,21 +1585,42 @@ class InfiniteCanvas {
             const layer = this.layers.find(l => l.id === element.layerId);
             if (layer && layer.visible && !layer.locked && this.isElementInSelectionBox(element)) {
                 this.selectedElements.add(element);
+                // Send shape selection to others
+                this.sendUpdate('shapeSelect', { 
+                    id: element.id,
+                    action: 'selected'
+                });
             }
         });
         
         this.selectedElement = this.selectedElements.size > 0 ? 
             Array.from(this.selectedElements)[0] : null;
         
+        console.log(`Selected ${this.selectedElements.size} elements via selection box`);
+        
         this.render();
     }
     
     isElementInSelectionBox(element) {
         const box = this.selectionBox;
-        return element.x >= box.x && 
-               element.x <= box.x + box.width &&
-               element.y >= box.y && 
-               element.y <= box.y + box.height;
+        
+        // Calculate element bounds
+        const elementLeft = element.x - element.width / 2;
+        const elementRight = element.x + element.width / 2;
+        const elementTop = element.y - element.height / 2;
+        const elementBottom = element.y + element.height / 2;
+        
+        // Calculate selection box bounds
+        const boxLeft = box.x;
+        const boxRight = box.x + box.width;
+        const boxTop = box.y;
+        const boxBottom = box.y + box.height;
+        
+        // Check if selection box intersects with element bounds
+        return !(elementRight < boxLeft || 
+                 elementLeft > boxRight || 
+                 elementBottom < boxTop || 
+                 elementTop > boxBottom);
     }
     
     selectAllElements() {
@@ -1960,7 +2188,7 @@ class InfiniteCanvas {
     
     // Draw selection box
     drawSelectionBox() {
-        if (!this.selectionBox) return;
+        if (!this.selectionBox || !this.isSelecting) return;
         
         const box = this.selectionBox;
         const startScreen = this.worldToScreen(box.x, box.y);
