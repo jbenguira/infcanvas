@@ -144,6 +144,10 @@ class InfiniteCanvas {
         this.updateRoomNameDisplay();
     }
     
+    isMobileDevice() {
+        return window.innerWidth <= 768 || 'ontouchstart' in window;
+    }
+    
     validateRoomName(roomName) {
         if (!roomName || typeof roomName !== 'string') return false;
         // Only allow letters, numbers, and hyphens
@@ -496,7 +500,12 @@ class InfiniteCanvas {
         if (e.button !== 0) return;
         
         if (this.isPlacing && this.selectedShape) {
-            this.startShapeSizing(this.mouse.worldX, this.mouse.worldY);
+            // Check if we're on mobile - use click-to-place instead of drag-to-size
+            if (this.isMobileDevice()) {
+                this.placeShape(this.mouse.worldX, this.mouse.worldY);
+            } else {
+                this.startShapeSizing(this.mouse.worldX, this.mouse.worldY);
+            }
             return;
         }
         
@@ -984,6 +993,12 @@ class InfiniteCanvas {
                 return;
             }
             
+            // Handle shape placement on touch devices
+            if (this.isPlacing && this.selectedShape) {
+                this.placeShape(this.mouse.worldX, this.mouse.worldY);
+                return;
+            }
+            
             // Check if touching an element
             const touchedElement = this.getElementAtPosition(this.mouse.worldX, this.mouse.worldY);
             
@@ -1324,7 +1339,10 @@ class InfiniteCanvas {
         this.isPlacing = true;
         this.canvas.className = 'placing';
         
-        document.getElementById('mode').textContent = `Click to place ${shape} (click button again to exit)`;
+        const instruction = this.isMobileDevice() ? 
+            `Tap to place ${shape} (tap button again to exit)` : 
+            `Click and drag to size ${shape}, or click to place default size (click button again to exit)`;
+        document.getElementById('mode').textContent = instruction;
     }
     
     placeShape(x, y) {
@@ -1385,7 +1403,7 @@ class InfiniteCanvas {
         
         this.isSizing = true;
         this.canvas.className = 'placing';
-        document.getElementById('mode').textContent = `Drag to size ${this.selectedShape}`;
+        document.getElementById('mode').textContent = `Drag to size ${this.selectedShape} (or release to place default size)`;
     }
     
     updateShapeSize() {
@@ -1422,9 +1440,11 @@ class InfiniteCanvas {
     completeShapeSizing() {
         if (!this.sizingShape) return;
         
-        // Don't create tiny shapes
+        // If shape is too small (user did a quick click), place default size shape
         if (this.sizingShape.width < 10 || this.sizingShape.height < 10) {
-            this.cancelShapeSizing();
+            this.placeShape(this.sizingShape.startX, this.sizingShape.startY);
+            this.isSizing = false;
+            this.sizingShape = null;
             return;
         }
         
@@ -1471,7 +1491,12 @@ class InfiniteCanvas {
         this.isSizing = false;
         this.sizingShape = null;
         this.canvas.className = 'placing';
-        document.getElementById('mode').textContent = `Click to place ${this.selectedShape} (click button again to exit)`;
+        
+        const instruction = this.isMobileDevice() ? 
+            `Tap to place ${this.selectedShape} (tap button again to exit)` : 
+            `Click and drag to size ${this.selectedShape}, or click to place default size (click button again to exit)`;
+        document.getElementById('mode').textContent = instruction;
+        
         this.render();
     }
     
