@@ -1,0 +1,490 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    overflow: hidden;
+    background: #f0f0f0;
+}
+
+.toolbar {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 1000;
+    background: white;
+    padding: 10px;
+    border-radius: 5px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+    max-width: calc(100vw - 300px);
+}
+
+.toolbar-section {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+}
+
+.side-panel {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    width: 250px;
+    background: white;
+    border-radius: 5px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 1000;
+    max-height: calc(100vh - 20px);
+    overflow-y: auto;
+}
+
+.panel-section {
+    padding: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.panel-section:last-child {
+    border-bottom: none;
+}
+
+.panel-section h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #333;
+}
+
+.layer-controls {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+.layer-btn {
+    padding: 5px 10px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    background: #f8f9fa;
+    cursor: pointer;
+    font-size: 12px;
+    flex: 1;
+}
+
+.layer-btn:hover {
+    background: #e9ecef;
+}
+
+.layers-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.layer-item {
+    display: flex;
+    align-items: center;
+    padding: 5px;
+    margin-bottom: 2px;
+    border: 1px solid #eee;
+    border-radius: 3px;
+    background: #f8f9fa;
+    cursor: pointer;
+    gap: 5px;
+}
+
+
+.layer-visibility, .layer-lock {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px;
+    font-size: 12px;
+}
+
+.layer-name {
+    flex: 1;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.layer-count {
+    font-size: 10px;
+    color: #666;
+}
+
+.quick-actions {
+    font-size: 11px;
+}
+
+.shortcut-info {
+    line-height: 1.4;
+    color: #666;
+}
+
+.coordinates-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 3px;
+    background: #007bff;
+    color: black;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+button:hover {
+    background: #0056b3;
+}
+
+#coordinates, #mode {
+    font-size: 12px;
+    color: #666;
+    font-family: monospace;
+}
+
+.shape-buttons {
+    display: flex;
+    gap: 5px;
+}
+
+.shape-btn {
+    width: 40px;
+    height: 40px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    background: white;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    padding: 0;
+}
+
+.shape-btn:hover {
+    border-color: #007bff;
+    background: #f8f9fa;
+}
+
+.shape-btn.active {
+    border-color: #007bff;
+    background: #007bff;
+    color: white;
+}
+
+.action-btn {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    background: #f8f9fa;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.action-btn:hover {
+    background: #e9ecef;
+    border-color: #007bff;
+}
+
+.action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.action-btn.active {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.connection-status {
+    font-size: 11px;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: #28a745;
+    color: white;
+}
+
+.connection-status.disconnected {
+    background: #dc3545;
+}
+
+.connection-status.error {
+    background: #ffc107;
+    color: #000;
+}
+
+.connection-status.failed {
+    background: #dc3545;
+}
+
+.clear-btn {
+    background: #dc3545;
+    color: white;
+    border: 2px solid #dc3545;
+    border-radius: 5px;
+    padding: 8px 12px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.clear-btn:hover {
+    background: #c82333;
+    border-color: #c82333;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.username {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.username:hover {
+    background: #e9ecef;
+    border-color: #007bff;
+}
+
+.user-count {
+    font-size: 12px;
+    color: #666;
+    font-weight: bold;
+}
+
+.other-cursor {
+    position: absolute;
+    pointer-events: none;
+    z-index: 1000;
+    transform: translate(-2px, -2px);
+}
+
+.cursor-pointer {
+    width: 0;
+    height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-bottom: 12px solid;
+    transform: rotate(-45deg);
+}
+
+.cursor-label {
+    position: absolute;
+    top: 15px;
+    left: 8px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    white-space: nowrap;
+    transform: rotate(45deg);
+}
+
+#labelInput {
+    position: absolute;
+    padding: 5px;
+    border: 2px solid #007bff;
+    border-radius: 3px;
+    background: white;
+    font-size: 14px;
+    z-index: 1001;
+}
+
+
+#canvas {
+    display: block;
+    cursor: grab;
+    background: white;
+}
+
+#canvas:active {
+    cursor: grabbing;
+}
+
+#canvas.placing {
+    cursor: crosshair;
+}
+
+#canvas.resizing {
+    cursor: pointer;
+}
+
+#canvas.rotating {
+    cursor: crosshair;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+.user-action-notification {
+    font-family: Arial, sans-serif;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+/* Modal styles */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    max-width: 400px;
+    width: 90%;
+}
+
+.modal-content h3 {
+    margin: 0 0 15px 0;
+    color: #333;
+}
+
+.export-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.export-options label {
+    font-weight: bold;
+    color: #333;
+}
+
+.export-options select,
+.export-options input {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+#customSize {
+    display: flex;
+    gap: 10px;
+}
+
+#customSize input {
+    flex: 1;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.modal-actions button {
+    padding: 8px 16px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.modal-actions button:first-child {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.modal-actions button:first-child:hover {
+    background: #0056b3;
+}
+
+.modal-actions button:last-child {
+    background: #f8f9fa;
+}
+
+.modal-actions button:last-child:hover {
+    background: #e9ecef;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .toolbar {
+        position: relative;
+        top: 0;
+        left: 0;
+        width: 100%;
+        max-width: none;
+        border-radius: 0;
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .side-panel {
+        position: relative;
+        top: 0;
+        right: 0;
+        width: 100%;
+        max-height: none;
+        border-radius: 0;
+        margin-top: 10px;
+    }
+    
+    .panel-section {
+        padding: 10px;
+    }
+    
+    .layers-list {
+        max-height: 150px;
+    }
+    
+    #canvas {
+        margin-top: 10px;
+    }
+}

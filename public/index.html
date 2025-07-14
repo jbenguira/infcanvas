@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinite Canvas</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+    <div class="toolbar">
+        <div class="shape-buttons">
+            <button class="shape-btn" data-shape="square" title="Square">⬜</button>
+            <button class="shape-btn" data-shape="rectangle" title="Rectangle">▬</button>
+            <button class="shape-btn" data-shape="circle" title="Circle">●</button>
+            <button class="shape-btn" data-shape="triangle" title="Triangle">▲</button>
+            <button class="shape-btn" data-shape="star" title="Star">★</button>
+        </div>
+        
+        <div class="toolbar-section">
+            <button id="undoBtn" class="action-btn" title="Undo (Ctrl+Z)">↶</button>
+            <button id="redoBtn" class="action-btn" title="Redo (Ctrl+Y)">↷</button>
+            <button id="snapToggle" class="action-btn" title="Snap to Grid (Ctrl+G)">Snap</button>
+            <button id="exportBtn" class="action-btn" title="Export Canvas">💾</button>
+            <button id="clearAll" class="clear-btn" title="Clear All Shapes">🗑️ Clear All</button>
+        </div>
+        
+        <div class="user-info">
+            <span id="username" class="username" title="Click to edit your name">👤 User</span>
+            <span id="userCount" class="user-count">👥 1</span>
+            <span id="connectionStatus" class="connection-status">Connected</span>
+        </div>
+        
+        <div class="coordinates-info">
+            <span id="coordinates">x: 0, y: 0</span>
+            <span id="mode">Select a shape</span>
+        </div>
+    </div>
+    
+    <div class="side-panel">
+        <div class="panel-section">
+            <h3>Layers</h3>
+            <div class="layer-controls">
+                <button id="addLayerBtn" class="layer-btn">+ Add Layer</button>
+                <button id="deleteLayerBtn" class="layer-btn">- Delete Layer</button>
+            </div>
+            <div id="layersList" class="layers-list"></div>
+        </div>
+        
+        <div class="panel-section">
+            <h3>Quick Actions</h3>
+            <div class="quick-actions">
+                <div class="shortcut-info">
+                    <strong>Shortcuts:</strong><br>
+                    Ctrl+Z: Undo<br>
+                    Ctrl+Y: Redo<br>
+                    Ctrl+C: Copy<br>
+                    Ctrl+V: Paste<br>
+                    Ctrl+A: Select All<br>
+                    Ctrl+D: Duplicate<br>
+                    Del: Delete<br>
+                    Arrows: Nudge<br>
+                    Shift+Arrows: Nudge 10px
+                </div>
+            </div>
+        </div>
+    </div>
+    <input type="text" id="labelInput" placeholder="Enter label..." style="display: none;">
+    
+    <!-- Export Dialog -->
+    <div id="exportDialog" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>Export Canvas</h3>
+            <div class="export-options">
+                <label>Format:</label>
+                <select id="exportFormat">
+                    <option value="png">PNG</option>
+                    <option value="jpg">JPG</option>
+                    <option value="svg">SVG</option>
+                    <option value="pdf">PDF</option>
+                </select>
+                
+                <label>Size:</label>
+                <select id="exportSize">
+                    <option value="1920x1080">1920x1080 (Full HD)</option>
+                    <option value="1280x720">1280x720 (HD)</option>
+                    <option value="800x600">800x600 (Standard)</option>
+                    <option value="custom">Custom</option>
+                </select>
+                
+                <div id="customSize" style="display: none;">
+                    <input type="number" id="customWidth" placeholder="Width" value="1920">
+                    <input type="number" id="customHeight" placeholder="Height" value="1080">
+                </div>
+                
+                <label>Background:</label>
+                <input type="color" id="exportBg" value="#ffffff">
+            </div>
+            
+            <div class="modal-actions">
+                <button onclick="canvas.exportCanvas(document.getElementById('exportFormat').value, {
+                    width: parseInt(document.getElementById('customWidth').value),
+                    height: parseInt(document.getElementById('customHeight').value),
+                    background: document.getElementById('exportBg').value
+                })">Export</button>
+                <button onclick="canvas.hideExportDialog()">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    <script src="canvas.js"></script>
+</body>
+</html>
