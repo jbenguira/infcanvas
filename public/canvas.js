@@ -953,12 +953,22 @@ class InfiniteCanvas {
         
         this.elements.push(element);
         this.addElementToLayer(element);
-        this.render();
         this.sendUpdate('add', element);
         this.saveToHistory(`Add ${this.selectedShape}`);
         
-        // Keep placing mode active for continuous placement
-        document.getElementById('mode').textContent = `Click to place another ${this.selectedShape} (ESC to exit)`;
+        // Exit placement mode and select the new element
+        this.exitPlacementMode();
+        this.selectedElement = element;
+        this.selectedElements.clear();
+        this.selectedElements.add(element);
+        
+        // Send shape selection to others
+        this.sendUpdate('shapeSelect', { 
+            id: element.id,
+            action: 'selected'
+        });
+        
+        this.render();
     }
     
     exitPlacementMode() {
