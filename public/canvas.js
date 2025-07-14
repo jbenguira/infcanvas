@@ -64,6 +64,13 @@ class InfiniteCanvas {
         this.otherUsers = new Map();
         this.lastMouseUpdate = 0;
         this.shapeUsers = new Map(); // Track which user is manipulating which shape
+        
+        // Touch handling for mobile
+        this.touches = [];
+        this.lastTouchDistance = 0;
+        this.lastTouchCenter = { x: 0, y: 0 };
+        this.isPinching = false;
+        
         this.init();
     }
     
@@ -473,6 +480,9 @@ class InfiniteCanvas {
     }
     
     handleWheel(e) {
+        // Skip wheel events if currently pinching (mobile)
+        if (this.isPinching) return;
+        
         e.preventDefault();
         this.updateMousePosition(e);
         
@@ -626,48 +636,144 @@ class InfiniteCanvas {
     // Touch event handlers for mobile support
     handleTouchStart(e) {
         e.preventDefault();
-        this.updateTouchPosition(e);
+        this.touches = Array.from(e.touches);
         
-        // Simulate mouse down
-        const mouseEvent = {
-            clientX: e.touches[0].clientX,
-            clientY: e.touches[0].clientY,
-            ctrlKey: false,
-            metaKey: false,
-            detail: 1
-        };
-        
-        this.handleMouseDown(mouseEvent);
+        if (this.touches.length === 1) {
+            // Single touch - handle as potential element selection or panning
+            this.updateTouchPosition(e);
+            
+            // Check if touching an element
+            const touchedElement = this.getElementAtPosition(this.mouse.worldX, this.mouse.worldY);
+            
+            if (touchedElement) {
+                // Simulate mouse down for element selection
+                const mouseEvent = {
+                    clientX: e.touches[0].clientX,
+                    clientY: e.touches[0].clientY,
+                    ctrlKey: false,
+                    metaKey: false,
+                    detail: 1
+                };
+                this.handleMouseDown(mouseEvent);
+            } else {
+                // Start panning
+                this.mouse.isDragging = true;
+                this.mouse.dragStartX = this.mouse.x;
+                this.mouse.dragStartY = this.mouse.y;
+                this.mouse.cameraStartX = this.camera.x;
+                this.mouse.cameraStartY = this.camera.y;
+                this.selectedElement = null;
+                this.selectedElements.clear();
+            }
+        } else if (this.touches.length === 2) {
+            // Two finger touch - prepare for pinch zoom
+            this.isPinching = true;
+            this.lastTouchDistance = this.getTouchDistance(this.touches[0], this.touches[1]);
+            this.lastTouchCenter = this.getTouchCenter(this.touches[0], this.touches[1]);
+            
+            // Clear any existing selection or dragging
+            this.mouse.isDragging = false;
+            this.selectedElement = null;
+            this.selectedElements.clear();
+        }
     }
     
     handleTouchMove(e) {
         e.preventDefault();
-        this.updateTouchPosition(e);
+        this.touches = Array.from(e.touches);
         
-        // Simulate mouse move
-        const mouseEvent = {
-            clientX: e.touches[0].clientX,
-            clientY: e.touches[0].clientY
-        };
-        
-        this.handleMouseMove(mouseEvent);
+        if (this.touches.length === 1) {
+            this.updateTouchPosition(e);
+            
+            if (this.selectedElement) {
+                // Moving selected element
+                const mouseEvent = {
+                    clientX: e.touches[0].clientX,
+                    clientY: e.touches[0].clientY
+                };
+                this.handleMouseMove(mouseEvent);
+            } else if (this.mouse.isDragging) {
+                // Panning the canvas
+                const deltaX = (this.mouse.x - this.mouse.dragStartX) / this.camera.zoom;
+                const deltaY = (this.mouse.y - this.mouse.dragStartY) / this.camera.zoom;
+                this.camera.x = this.mouse.cameraStartX - deltaX;
+                this.camera.y = this.mouse.cameraStartY - deltaY;
+                this.render();
+            }
+        } else if (this.touches.length === 2 && this.isPinching) {
+            // Pinch zoom
+            const currentDistance = this.getTouchDistance(this.touches[0], this.touches[1]);
+            const currentCenter = this.getTouchCenter(this.touches[0], this.touches[1]);
+            
+            // Calculate zoom
+            const zoomFactor = currentDistance / this.lastTouchDistance;
+            const newZoom = Math.max(0.1, Math.min(5, this.camera.zoom * zoomFactor));
+            
+            if (newZoom !== this.camera.zoom) {
+                // Get world position of zoom center
+                const rect = this.canvas.getBoundingClientRect();
+                const centerX = currentCenter.x - rect.left;
+                const centerY = currentCenter.y - rect.top;
+                
+                const worldPos = this.screenToWorld(centerX, centerY);
+                
+                this.camera.zoom = newZoom;
+                
+                const newWorldPos = this.screenToWorld(centerX, centerY);
+                this.camera.x += worldPos.x - newWorldPos.x;
+                this.camera.y += worldPos.y - newWorldPos.y;
+                
+                this.render();
+            }
+            
+            // Update for next frame
+            this.lastTouchDistance = currentDistance;
+            this.lastTouchCenter = currentCenter;
+        }
     }
     
     handleTouchEnd(e) {
         e.preventDefault();
+        this.touches = Array.from(e.touches);
         
-        // If there are remaining touches, update position
-        if (e.touches.length > 0) {
+        if (this.touches.length === 0) {
+            // All touches ended
+            if (this.selectedElement) {
+                // Finish element manipulation
+                const mouseEvent = {
+                    clientX: e.changedTouches[0].clientX,
+                    clientY: e.changedTouches[0].clientY
+                };
+                this.handleMouseUp(mouseEvent);
+            } else {
+                // Finish panning
+                this.mouse.isDragging = false;
+            }
+            this.isPinching = false;
+        } else if (this.touches.length === 1 && this.isPinching) {
+            // One finger left, switch from pinch to pan
+            this.isPinching = false;
             this.updateTouchPosition(e);
+            this.mouse.isDragging = true;
+            this.mouse.dragStartX = this.mouse.x;
+            this.mouse.dragStartY = this.mouse.y;
+            this.mouse.cameraStartX = this.camera.x;
+            this.mouse.cameraStartY = this.camera.y;
         }
-        
-        // Simulate mouse up
-        const mouseEvent = {
-            clientX: e.changedTouches[0].clientX,
-            clientY: e.changedTouches[0].clientY
+    }
+    
+    // Helper functions for touch handling
+    getTouchDistance(touch1, touch2) {
+        const dx = touch1.clientX - touch2.clientX;
+        const dy = touch1.clientY - touch2.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    getTouchCenter(touch1, touch2) {
+        return {
+            x: (touch1.clientX + touch2.clientX) / 2,
+            y: (touch1.clientY + touch2.clientY) / 2
         };
-        
-        this.handleMouseUp(mouseEvent);
     }
     
     drawElement(element, screenPos) {
