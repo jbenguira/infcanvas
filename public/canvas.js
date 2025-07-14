@@ -642,6 +642,30 @@ class InfiniteCanvas {
             // Single touch - handle as potential element selection or panning
             this.updateTouchPosition(e);
             
+            // Check for resize handles first (if we have a selected element)
+            const resizeHandle = this.getResizeHandle(this.mouse.x, this.mouse.y);
+            if (resizeHandle) {
+                this.isResizing = true;
+                this.resizeHandle = resizeHandle;
+                this.canvas.className = 'resizing';
+                return;
+            }
+            
+            // Check for rotate handle
+            const rotateHandle = this.getRotateHandle(this.mouse.x, this.mouse.y);
+            if (rotateHandle) {
+                this.isRotating = true;
+                this.canvas.className = 'rotating';
+                return;
+            }
+            
+            // Check for delete handle
+            const deleteHandle = this.getDeleteHandle(this.mouse.x, this.mouse.y);
+            if (deleteHandle) {
+                this.deleteSelectedElements();
+                return;
+            }
+            
             // Check if touching an element
             const touchedElement = this.getElementAtPosition(this.mouse.worldX, this.mouse.worldY);
             
@@ -685,7 +709,38 @@ class InfiniteCanvas {
         if (this.touches.length === 1) {
             this.updateTouchPosition(e);
             
-            if (this.selectedElement) {
+            if (this.isResizing && this.selectedElement && this.resizeHandle) {
+                // Resizing element
+                this.resizeElement(this.resizeHandle);
+                // Send live resize update
+                this.sendUpdate('move', {
+                    id: this.selectedElement.id,
+                    x: this.selectedElement.x,
+                    y: this.selectedElement.y,
+                    width: this.selectedElement.width,
+                    height: this.selectedElement.height,
+                    action: 'resizing'
+                });
+                this.render();
+                return;
+            }
+            
+            if (this.isRotating && this.selectedElement) {
+                // Rotating element
+                this.rotateElement();
+                // Send live rotate update
+                this.sendUpdate('move', {
+                    id: this.selectedElement.id,
+                    x: this.selectedElement.x,
+                    y: this.selectedElement.y,
+                    rotation: this.selectedElement.rotation,
+                    action: 'rotating'
+                });
+                this.render();
+                return;
+            }
+            
+            if (this.selectedElement && this.mouse.isDragging) {
                 // Moving selected element
                 const mouseEvent = {
                     clientX: e.touches[0].clientX,
@@ -738,7 +793,18 @@ class InfiniteCanvas {
         
         if (this.touches.length === 0) {
             // All touches ended
-            if (this.selectedElement) {
+            if (this.isResizing || this.isRotating) {
+                // Finish resizing/rotating
+                if (this.selectedElement) {
+                    this.sendUpdate('update', this.selectedElement);
+                    this.sendUpdate('shapeRelease', { id: this.selectedElement.id });
+                    this.saveToHistory(this.isResizing ? 'Resize element' : 'Rotate element');
+                }
+                this.isResizing = false;
+                this.isRotating = false;
+                this.resizeHandle = null;
+                this.canvas.className = '';
+            } else if (this.selectedElement && this.mouse.isDragging) {
                 // Finish element manipulation
                 const mouseEvent = {
                     clientX: e.changedTouches[0].clientX,

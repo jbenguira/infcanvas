@@ -341,8 +341,8 @@
       "shape": "triangle",
       "text": "",
       "layerId": "layer_1752513530511",
-      "userId": "user_yp70xiuh3",
-      "userName": "Clever Deer"
+      "userId": "user_tcvz409rm",
+      "userName": "Quick Deer"
     },
     {
       "id": 1752518958863.3357,
@@ -360,17 +360,17 @@
     },
     {
       "id": 1752518959795.2605,
-      "x": -2417.066830355766,
-      "y": -717.3235665193912,
-      "width": 80,
-      "height": 80,
+      "x": -2362.499558595162,
+      "y": -672.7941967265614,
+      "width": 189.13454352120743,
+      "height": 169.05873958565985,
       "rotation": 0,
       "color": "#FF9FF3",
       "shape": "triangle",
       "text": "",
       "layerId": "layer_1752518949288",
-      "userId": "user_hdi1lb5j2",
-      "userName": "Strong Tiger"
+      "userId": "user_tcvz409rm",
+      "userName": "Quick Deer"
     }
   ],
   "camera": {
@@ -378,7 +378,7 @@
     "y": -546.6792330672411,
     "zoom": 0.34867844010000015
   },
-  "timestamp": "2025-07-14T18:57:02.433Z",
+  "timestamp": "2025-07-14T19:37:59.979Z",
   "layers": [
     {
       "id": "layer_0",
