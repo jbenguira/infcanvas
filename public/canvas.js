@@ -60,6 +60,10 @@ class InfiniteCanvas {
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 1000;
         
+        // Room functionality
+        this.roomName = null;
+        this.isJoiningRoom = false;
+        
         this.userId = 'user_' + Math.random().toString(36).substr(2, 9);
         this.userName = this.generateRandomName();
         this.otherUsers = new Map();
@@ -87,6 +91,10 @@ class InfiniteCanvas {
     async init() {
         this.resizeCanvas();
         this.setupEventListeners();
+        
+        // Handle room routing
+        await this.handleRoomRouting();
+        
         this.setupWebSocket();
         this.saveToHistory('Initial state');
         this.updateLayerUI();
@@ -96,8 +104,163 @@ class InfiniteCanvas {
         document.getElementById('username').textContent = `👤 ${this.userName}`;
         
         window.addEventListener('resize', () => this.resizeCanvas());
+        window.addEventListener('hashchange', () => this.handleHashChange());
     }
     
+    async handleRoomRouting() {
+        // Get room name from URL hash
+        const hash = window.location.hash.substr(1); // Remove #
+        
+        if (hash && this.validateRoomName(hash)) {
+            // Valid room name in URL
+            this.roomName = hash;
+            console.log(`Joining room from URL: ${this.roomName}`);
+        } else {
+            // No valid room name, generate one and redirect
+            try {
+                const response = await fetch('/api/room/generate');
+                const data = await response.json();
+                this.roomName = data.roomName;
+                
+                // Update URL with new room name
+                window.location.hash = this.roomName;
+                console.log(`Generated new room: ${this.roomName}`);
+            } catch (error) {
+                console.error('Failed to generate room name:', error);
+                // Fallback to local generation
+                this.roomName = this.generateLocalRoomName();
+                window.location.hash = this.roomName;
+            }
+        }
+        
+        // Update page title with room name
+        document.title = `Infinite Canvas - ${this.roomName}`;
+        
+        // Update room name display in UI
+        this.updateRoomNameDisplay();
+    }
+    
+    validateRoomName(roomName) {
+        if (!roomName || typeof roomName !== 'string') return false;
+        // Only allow letters, numbers, and hyphens
+        const validPattern = /^[a-zA-Z0-9-]+$/;
+        // Must be between 3 and 50 characters
+        return validPattern.test(roomName) && roomName.length >= 3 && roomName.length <= 50;
+    }
+    
+    generateLocalRoomName() {
+        const adjectives = ['happy', 'creative', 'bright', 'swift', 'clever', 'cool', 'calm', 'bold', 'warm', 'quick'];
+        const nouns = ['canvas', 'space', 'room', 'studio', 'board', 'place', 'zone', 'area', 'lab', 'hub'];
+        const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+        const noun = nouns[Math.floor(Math.random() * nouns.length)];
+        const number = Math.floor(Math.random() * 1000);
+        return `${adjective}-${noun}-${number}`;
+    }
+    
+    async handleHashChange() {
+        const newHash = window.location.hash.substr(1); // Remove #
+        
+        // If hash is empty or same as current room, do nothing
+        if (!newHash || newHash === this.roomName) return;
+        
+        console.log(`Hash changed from ${this.roomName} to ${newHash}`);
+        
+        // Validate new room name
+        if (!this.validateRoomName(newHash)) {
+            console.warn(`Invalid room name: ${newHash}, staying in current room`);
+            // Revert hash to current room
+            window.location.hash = this.roomName;
+            return;
+        }
+        
+        // Switch to new room
+        await this.switchRoom(newHash);
+    }
+    
+    async switchRoom(newRoomName) {
+        console.log(`Switching from room "${this.roomName}" to "${newRoomName}"`);
+        
+        // Store old room name for rollback if needed
+        const oldRoomName = this.roomName;
+        
+        try {
+            // Update room name
+            this.roomName = newRoomName;
+            
+            // Update page title and UI
+            document.title = `Infinite Canvas - ${this.roomName}`;
+            this.updateRoomNameDisplay();
+            
+            // Clear current state
+            this.clearCanvas();
+            
+            // Close current WebSocket connection
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.close();
+            }
+            
+            // Reset connection state
+            this.isConnected = false;
+            this.isJoiningRoom = false;
+            this.updateConnectionStatus('Switching rooms...');
+            
+            // Wait a moment for cleanup
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Setup new WebSocket connection to new room
+            this.setupWebSocket();
+            
+        } catch (error) {
+            console.error('Error switching rooms:', error);
+            
+            // Rollback on error
+            this.roomName = oldRoomName;
+            document.title = `Infinite Canvas - ${this.roomName}`;
+            this.updateRoomNameDisplay();
+            window.location.hash = oldRoomName;
+            this.updateConnectionStatus('Error switching rooms');
+        }
+    }
+    
+    clearCanvas() {
+        // Clear current canvas state
+        this.elements = [];
+        this.selectedElements.clear();
+        this.selectedElement = null;
+        this.layers = [{
+            id: 'layer_0',
+            name: 'Layer 1',
+            visible: true,
+            locked: false,
+            elements: []
+        }];
+        this.activeLayerId = 'layer_0';
+        
+        // Clear history
+        this.history = [];
+        this.historyIndex = -1;
+        
+        // Clear other users
+        this.otherUsers.clear();
+        this.shapeUsers.clear();
+        
+        // Reset camera
+        this.camera = { x: 0, y: 0, zoom: 1 };
+        
+        // Update UI
+        this.updateLayerUI();
+        this.render();
+        
+        console.log('Canvas cleared for room switch');
+    }
+    
+    updateRoomNameDisplay() {
+        const roomNameElement = document.getElementById('roomName');
+        if (roomNameElement && this.roomName) {
+            roomNameElement.textContent = `🏠 ${this.roomName}`;
+        }
+    }
+
     resizeCanvas() {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
@@ -123,6 +286,7 @@ class InfiniteCanvas {
         
         document.getElementById('clearAll').addEventListener('click', () => this.clearAllElements());
         document.getElementById('username').addEventListener('click', () => this.editUsername());
+        document.getElementById('roomName').addEventListener('click', () => this.editRoomName());
         
         // History controls
         document.getElementById('undoBtn').addEventListener('click', () => this.undo());
@@ -1993,21 +2157,15 @@ class InfiniteCanvas {
             this.reconnectAttempts = 0;
             this.updateConnectionStatus('Connected');
             
-            // Send user info on connect
-            if (this.ws.readyState === WebSocket.OPEN) {
+            // Join room first
+            if (this.ws.readyState === WebSocket.OPEN && this.roomName) {
+                this.isJoiningRoom = true;
                 this.ws.send(JSON.stringify({
-                    type: 'userInfo',
+                    type: 'joinRoom',
                     data: {
-                        userId: this.userId,
-                        userName: this.userName
+                        roomName: this.roomName
                     }
                 }));
-            }
-            
-            // Send any pending updates
-            while (this.pendingUpdates.length > 0) {
-                const update = this.pendingUpdates.shift();
-                this.ws.send(JSON.stringify(update));
             }
         };
         
@@ -2050,7 +2208,35 @@ class InfiniteCanvas {
         const { type, data } = message;
         
         switch (type) {
+            case 'error':
+                console.error('Server error:', data.message);
+                this.updateConnectionStatus('Error: ' + data.message);
+                break;
+                
             case 'init':
+                // Room joined successfully and initial state received
+                if (this.isJoiningRoom) {
+                    this.isJoiningRoom = false;
+                    console.log(`Successfully joined room: ${this.roomName}`);
+                    
+                    // Send user info after joining room
+                    if (this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({
+                            type: 'userInfo',
+                            data: {
+                                userId: this.userId,
+                                userName: this.userName
+                            }
+                        }));
+                    }
+                    
+                    // Send any pending updates
+                    while (this.pendingUpdates.length > 0) {
+                        const update = this.pendingUpdates.shift();
+                        this.ws.send(JSON.stringify(update));
+                    }
+                }
+                
                 // Initial state from server
                 this.elements = data.elements || [];
                 this.camera = data.camera || { x: 0, y: 0, zoom: 1 };
@@ -2068,7 +2254,7 @@ class InfiniteCanvas {
                 
                 this.updateLayerUI();
                 this.render();
-                console.log(`Loaded ${this.elements.length} elements and ${this.layers.length} layers from server`);
+                console.log(`Loaded ${this.elements.length} elements and ${this.layers.length} layers from room ${this.roomName}`);
                 break;
                 
             case 'add':
@@ -2372,6 +2558,56 @@ class InfiniteCanvas {
                     }
                 }));
             }
+        }
+    }
+    
+    editRoomName() {
+        const currentRoom = this.roomName;
+        const newRoomName = prompt(
+            'Enter room name to join:\n\n' +
+            'Rules:\n' +
+            '• Only letters, numbers, and hyphens (-) allowed\n' +
+            '• Between 3-50 characters\n' +
+            '• Examples: my-room, team-canvas-2024, project-alpha\n\n' +
+            'Current room:', 
+            currentRoom
+        );
+        
+        if (!newRoomName) {
+            return; // User cancelled
+        }
+        
+        const trimmedName = newRoomName.trim();
+        
+        // Check if room name actually changed
+        if (trimmedName === currentRoom) {
+            return; // No change
+        }
+        
+        // Validate room name
+        if (!this.validateRoomName(trimmedName)) {
+            alert(
+                'Invalid room name!\n\n' +
+                'Please use only:\n' +
+                '• Letters (a-z, A-Z)\n' +
+                '• Numbers (0-9)\n' +
+                '• Hyphens (-)\n' +
+                '• Length: 3-50 characters\n\n' +
+                'Examples: my-room, team-canvas-2024, project-alpha'
+            );
+            return;
+        }
+        
+        // Confirm room switch
+        const confirmed = confirm(
+            `Switch to room "${trimmedName}"?\n\n` +
+            `You will leave "${currentRoom}" and join "${trimmedName}".\n` +
+            'Any unsaved work in the current room will remain in that room.'
+        );
+        
+        if (confirmed) {
+            // Update URL hash to trigger room switch
+            window.location.hash = trimmedName;
         }
     }
     

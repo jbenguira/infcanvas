@@ -276,6 +276,25 @@ button:hover {
     gap: 8px;
 }
 
+.room-name {
+    background: #007bff;
+    color: white;
+    border: 1px solid #007bff;
+    border-radius: 3px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.room-name:hover {
+    background: #0056b3;
+    border-color: #0056b3;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+}
+
 .username {
     background: #f8f9fa;
     border: 1px solid #ddd;

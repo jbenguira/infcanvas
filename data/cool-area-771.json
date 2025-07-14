@@ -1,0 +1,65 @@
+{
+  "elements": [
+    {
+      "id": 1752527606090.079,
+      "x": -389,
+      "y": -185.5,
+      "width": 344,
+      "height": 76,
+      "rotation": 0,
+      "color": "#FECA57",
+      "shape": "triangle",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_2rn360i06",
+      "userName": "Strong Lion"
+    },
+    {
+      "id": 1752527611593.3186,
+      "x": -179,
+      "y": -148.5,
+      "width": 80,
+      "height": 80,
+      "rotation": 0,
+      "color": "#FECA57",
+      "shape": "circle",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_2rn360i06",
+      "userName": "Strong Lion"
+    },
+    {
+      "id": 1752527616134.7583,
+      "x": -608,
+      "y": -151.5,
+      "width": 120,
+      "height": 60,
+      "rotation": 0,
+      "color": "#FF6B6B",
+      "shape": "rectangle",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_2rn360i06",
+      "userName": "Strong Lion"
+    }
+  ],
+  "camera": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "layers": [
+    {
+      "id": "layer_0",
+      "name": "Layer 1",
+      "visible": true,
+      "locked": false,
+      "elements": [
+        1752527606090.079,
+        1752527611593.3186,
+        1752527616134.7583
+      ]
+    }
+  ],
+  "timestamp": "2025-07-14T21:13:37.938Z"
+}

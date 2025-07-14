@@ -7,7 +7,7 @@ const http = require('http');
 
 const app = express();
 const PORT = 3001;
-const DATA_FILE = path.join(__dirname, 'canvas-data.json');
+const DATA_DIR = path.join(__dirname, 'data');
 
 app.use(cors());
 app.use(express.json());
@@ -19,20 +19,73 @@ const server = http.createServer(app);
 // Create WebSocket server
 const wss = new WebSocket.Server({ server });
 
-// Store canvas state in memory
-let canvasState = {
-    elements: [],
-    camera: { x: 0, y: 0, zoom: 1 },
-    timestamp: new Date().toISOString()
-};
+// Store canvas states for different rooms
+let roomStates = new Map();
 
-// Store connected users
-let connectedUsers = new Map();
+// Store connected users per room
+let roomUsers = new Map();
 
-// Load initial state from file
-async function loadInitialState() {
+// Validate room name to prevent path traversal and other attacks
+function validateRoomName(roomName) {
+    if (!roomName || typeof roomName !== 'string') return false;
+    // Only allow letters, numbers, and hyphens
+    const validPattern = /^[a-zA-Z0-9-]+$/;
+    // Must be between 3 and 50 characters
+    return validPattern.test(roomName) && roomName.length >= 3 && roomName.length <= 50;
+}
+
+// Generate a safe random room name
+function generateRoomName() {
+    const adjectives = ['happy', 'creative', 'bright', 'swift', 'clever', 'cool', 'calm', 'bold', 'warm', 'quick'];
+    const nouns = ['canvas', 'space', 'room', 'studio', 'board', 'place', 'zone', 'area', 'lab', 'hub'];
+    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    const number = Math.floor(Math.random() * 1000);
+    return `${adjective}-${noun}-${number}`;
+}
+
+// Get file path for room
+function getRoomFilePath(roomName) {
+    if (!validateRoomName(roomName)) {
+        throw new Error('Invalid room name');
+    }
+    return path.join(DATA_DIR, `${roomName}.json`);
+}
+
+// Initialize room state
+function initRoomState() {
+    return {
+        elements: [],
+        camera: { x: 0, y: 0, zoom: 1 },
+        layers: [{
+            id: 'layer_0',
+            name: 'Layer 1',
+            visible: true,
+            locked: false,
+            elements: []
+        }],
+        timestamp: new Date().toISOString()
+    };
+}
+
+// Ensure data directory exists
+async function ensureDataDir() {
     try {
-        const data = await fs.readFile(DATA_FILE, 'utf8');
+        await fs.mkdir(DATA_DIR, { recursive: true });
+    } catch (error) {
+        console.error('Error creating data directory:', error);
+    }
+}
+
+// Load room state from file
+async function loadRoomState(roomName) {
+    if (!validateRoomName(roomName)) {
+        throw new Error('Invalid room name');
+    }
+    
+    try {
+        const filePath = getRoomFilePath(roomName);
+        const data = await fs.readFile(filePath, 'utf8');
         const loadedState = JSON.parse(data);
         
         // Ensure backward compatibility with old format
@@ -57,78 +110,86 @@ async function loadInitialState() {
             }];
         }
         
-        canvasState = loadedState;
-        console.log(`Loaded canvas with ${canvasState.elements.length} elements and ${canvasState.layers.length} layers`);
+        roomStates.set(roomName, loadedState);
+        console.log(`Loaded room "${roomName}" with ${loadedState.elements.length} elements and ${loadedState.layers.length} layers`);
+        return loadedState;
     } catch (error) {
         if (error.code === 'ENOENT') {
-            console.log('No existing canvas data, starting with empty state');
-            // Ensure layers array is initialized even when no file exists
-            if (!canvasState.layers) {
-                canvasState.layers = [{
-                    id: 'layer_0',
-                    name: 'Layer 1',
-                    visible: true,
-                    locked: false,
-                    elements: []
-                }];
-            }
+            console.log(`No existing data for room "${roomName}", creating new room`);
+            const newState = initRoomState();
+            roomStates.set(roomName, newState);
+            return newState;
         } else {
-            console.error('Error loading initial state:', error);
+            console.error(`Error loading room "${roomName}":`, error);
+            throw error;
         }
     }
 }
 
-// Save state to file
-async function saveState() {
+// Save room state to file
+async function saveRoomState(roomName) {
+    if (!validateRoomName(roomName)) {
+        throw new Error('Invalid room name');
+    }
+    
     try {
-        await fs.writeFile(DATA_FILE, JSON.stringify(canvasState, null, 2));
+        const state = roomStates.get(roomName);
+        if (!state) return;
+        
+        const filePath = getRoomFilePath(roomName);
+        await fs.writeFile(filePath, JSON.stringify(state, null, 2));
     } catch (error) {
-        console.error('Error saving state:', error);
+        console.error(`Error saving room "${roomName}":`, error);
     }
 }
 
-// Ensure canvas state has proper layers array
-function ensureLayersArray() {
-    if (!canvasState.layers || !Array.isArray(canvasState.layers)) {
-        canvasState.layers = [{
+// Ensure room state has proper layers array
+function ensureLayersArray(roomName) {
+    const state = roomStates.get(roomName);
+    if (!state) return;
+    
+    if (!state.layers || !Array.isArray(state.layers)) {
+        state.layers = [{
             id: 'layer_0',
             name: 'Layer 1',
             visible: true,
             locked: false,
             elements: []
         }];
-        console.log('Initialized default layers array');
+        console.log(`Initialized default layers array for room "${roomName}"`);
     }
 }
 
-// Apply incremental update to canvas state
-function applyUpdate(update) {
+// Apply incremental update to room state
+function applyUpdate(update, roomName) {
     const { type, data } = update;
+    const state = roomStates.get(roomName);
+    if (!state) return;
     
     // Ensure layers array exists before any operation
-    ensureLayersArray();
+    ensureLayersArray(roomName);
     
     switch (type) {
         case 'add':
-            canvasState.elements.push(data);
+            state.elements.push(data);
             // Add to layer if specified
             if (data.layerId) {
-                const layer = canvasState.layers.find(l => l.id === data.layerId);
+                const layer = state.layers.find(l => l.id === data.layerId);
                 if (layer && !layer.elements.includes(data.id)) {
                     layer.elements.push(data.id);
                 }
             }
             break;
         case 'update':
-            const updateIndex = canvasState.elements.findIndex(el => el.id === data.id);
+            const updateIndex = state.elements.findIndex(el => el.id === data.id);
             if (updateIndex !== -1) {
-                canvasState.elements[updateIndex] = { ...canvasState.elements[updateIndex], ...data };
+                state.elements[updateIndex] = { ...state.elements[updateIndex], ...data };
             }
             break;
         case 'delete':
-            canvasState.elements = canvasState.elements.filter(el => el.id !== data.id);
+            state.elements = state.elements.filter(el => el.id !== data.id);
             // Remove from layers
-            canvasState.layers.forEach(layer => {
+            state.layers.forEach(layer => {
                 const index = layer.elements.indexOf(data.id);
                 if (index !== -1) {
                     layer.elements.splice(index, 1);
@@ -136,8 +197,8 @@ function applyUpdate(update) {
             });
             break;
         case 'clear':
-            canvasState.elements = [];
-            canvasState.layers.forEach(layer => {
+            state.elements = [];
+            state.layers.forEach(layer => {
                 layer.elements = [];
             });
             break;
@@ -152,8 +213,11 @@ function applyUpdate(update) {
             // Shape interaction tracking - don't save to file, just broadcast
             break;
         case 'userInfo':
-            // User info updates - store in connected users
-            connectedUsers.set(data.userId, {
+            // User info updates - store in room users
+            if (!roomUsers.has(roomName)) {
+                roomUsers.set(roomName, new Map());
+            }
+            roomUsers.get(roomName).set(data.userId, {
                 userName: data.userName,
                 lastSeen: Date.now()
             });
@@ -161,49 +225,49 @@ function applyUpdate(update) {
         case 'fullSync':
             // Full state synchronization for undo/redo
             if (data.elements) {
-                canvasState.elements = data.elements;
+                state.elements = data.elements;
             }
             if (data.layers) {
-                canvasState.layers = data.layers;
-                console.log(`Full sync: ${data.layers.length} layers, ${data.elements ? data.elements.length : 'unchanged'} elements`);
+                state.layers = data.layers;
+                console.log(`Full sync for room "${roomName}": ${data.layers.length} layers, ${data.elements ? data.elements.length : 'unchanged'} elements`);
             }
             break;
         case 'addLayer':
-            canvasState.layers.push(data);
-            console.log(`Added layer: ${data.name} (${data.id})`);
+            state.layers.push(data);
+            console.log(`Added layer to room "${roomName}": ${data.name} (${data.id})`);
             break;
         case 'deleteLayer':
-            const layerIndex = canvasState.layers.findIndex(l => l.id === data.id);
+            const layerIndex = state.layers.findIndex(l => l.id === data.id);
             if (layerIndex !== -1) {
-                const layer = canvasState.layers[layerIndex];
-                console.log(`Deleting layer: ${layer.name} with ${layer.elements.length} elements`);
+                const layer = state.layers[layerIndex];
+                console.log(`Deleting layer from room "${roomName}": ${layer.name} with ${layer.elements.length} elements`);
                 // Remove all elements from this layer
                 layer.elements.forEach(elementId => {
-                    canvasState.elements = canvasState.elements.filter(el => el.id !== elementId);
+                    state.elements = state.elements.filter(el => el.id !== elementId);
                 });
-                canvasState.layers.splice(layerIndex, 1);
+                state.layers.splice(layerIndex, 1);
             }
             break;
         case 'updateLayer':
-            const layerUpdateIndex = canvasState.layers.findIndex(l => l.id === data.id);
+            const layerUpdateIndex = state.layers.findIndex(l => l.id === data.id);
             if (layerUpdateIndex !== -1) {
-                canvasState.layers[layerUpdateIndex] = { ...canvasState.layers[layerUpdateIndex], ...data };
-                console.log(`Updated layer: ${data.name || canvasState.layers[layerUpdateIndex].name}`);
+                state.layers[layerUpdateIndex] = { ...state.layers[layerUpdateIndex], ...data };
+                console.log(`Updated layer in room "${roomName}": ${data.name || state.layers[layerUpdateIndex].name}`);
             }
             break;
         case 'camera':
-            canvasState.camera = data;
+            state.camera = data;
             break;
     }
     
-    canvasState.timestamp = new Date().toISOString();
+    state.timestamp = new Date().toISOString();
 }
 
-// Broadcast update to all connected clients except sender
-function broadcastUpdate(update, senderWs) {
+// Broadcast update to all connected clients in the same room except sender
+function broadcastUpdate(update, senderWs, roomName) {
     const message = JSON.stringify(update);
     wss.clients.forEach(client => {
-        if (client !== senderWs && client.readyState === WebSocket.OPEN) {
+        if (client !== senderWs && client.readyState === WebSocket.OPEN && client.roomName === roomName) {
             client.send(message);
         }
     });
@@ -211,49 +275,83 @@ function broadcastUpdate(update, senderWs) {
 
 // WebSocket connection handling
 wss.on('connection', (ws) => {
-    //console.log('New client connected');
     let userId = null;
-    
-    // Ensure layers array exists before sending to client
-    ensureLayersArray();
-    
-    // Send current state to new client
-    ws.send(JSON.stringify({
-        type: 'init',
-        data: canvasState
-    }));
+    let roomName = null;
     
     // Handle messages from client
     ws.on('message', async (message) => {
         try {
             const update = JSON.parse(message);
-            //console.log('Received update:', update.type, update.data?.id || update.data?.userId || 'other');
+            
+            // Handle room join
+            if (update.type === 'joinRoom') {
+                roomName = update.data.roomName;
+                
+                // Validate room name
+                if (!validateRoomName(roomName)) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        data: { message: 'Invalid room name' }
+                    }));
+                    return;
+                }
+                
+                // Store room name on the WebSocket connection
+                ws.roomName = roomName;
+                
+                // Load or create room state
+                const roomState = await loadRoomState(roomName);
+                
+                // Ensure layers array exists before sending to client
+                ensureLayersArray(roomName);
+                
+                // Send current room state to new client
+                ws.send(JSON.stringify({
+                    type: 'init',
+                    data: roomState
+                }));
+                
+                console.log(`Client joined room: ${roomName}`);
+                return;
+            }
+            
+            // All other messages require a room
+            if (!roomName) {
+                ws.send(JSON.stringify({
+                    type: 'error',
+                    data: { message: 'Must join a room first' }
+                }));
+                return;
+            }
             
             // Track user ID for this connection
             if (update.type === 'userInfo') {
                 userId = update.data.userId;
                 
-                // Broadcast user joined to others
+                // Get room users
+                const roomUserMap = roomUsers.get(roomName) || new Map();
+                
+                // Broadcast user joined to others in the same room
                 broadcastUpdate({
                     type: 'userJoined',
                     data: {
                         userId: update.data.userId,
                         userName: update.data.userName,
-                        userCount: connectedUsers.size + 1
+                        userCount: roomUserMap.size + 1
                     }
-                }, ws);
+                }, ws, roomName);
             }
             
-            // Apply update to server state
-            applyUpdate(update);
+            // Apply update to room state
+            applyUpdate(update, roomName);
             
             // Save to file only for persistent updates
             if (!['move', 'cursor', 'userInfo', 'shapeSelect', 'shapeRelease'].includes(update.type)) {
-                await saveState();
+                await saveRoomState(roomName);
             }
             
-            // Broadcast to other clients
-            broadcastUpdate(update, ws);
+            // Broadcast to other clients in the same room
+            broadcastUpdate(update, ws, roomName);
             
         } catch (error) {
             console.error('Error processing message:', error);
@@ -261,25 +359,28 @@ wss.on('connection', (ws) => {
     });
     
     ws.on('close', () => {
-        //console.log('Client disconnected');
+        console.log(`Client disconnected from room: ${roomName || 'no room'}`);
         
-        if (userId) {
-            const user = connectedUsers.get(userId);
-            connectedUsers.delete(userId);
-            
-            // Broadcast user left to others
-            wss.clients.forEach(client => {
-                if (client !== ws && client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify({
-                        type: 'userLeft',
-                        data: {
-                            userId: userId,
-                            userName: user?.userName || 'Unknown',
-                            userCount: connectedUsers.size
-                        }
-                    }));
-                }
-            });
+        if (userId && roomName) {
+            const roomUserMap = roomUsers.get(roomName);
+            if (roomUserMap) {
+                const user = roomUserMap.get(userId);
+                roomUserMap.delete(userId);
+                
+                // Broadcast user left to others in the same room
+                wss.clients.forEach(client => {
+                    if (client !== ws && client.readyState === WebSocket.OPEN && client.roomName === roomName) {
+                        client.send(JSON.stringify({
+                            type: 'userLeft',
+                            data: {
+                                userId: userId,
+                                userName: user?.userName || 'Unknown',
+                                userCount: roomUserMap.size
+                            }
+                        }));
+                    }
+                });
+            }
         }
     });
     
@@ -288,26 +389,57 @@ wss.on('connection', (ws) => {
     });
 });
 
-// REST API endpoints for backward compatibility
-app.get('/api/load', (req, res) => {
-    res.json(canvasState);
+// REST API endpoints
+app.get('/api/room/generate', (req, res) => {
+    const roomName = generateRoomName();
+    res.json({ roomName });
+});
+
+app.get('/api/room/:roomName/load', async (req, res) => {
+    try {
+        const roomName = req.params.roomName;
+        if (!validateRoomName(roomName)) {
+            return res.status(400).json({ error: 'Invalid room name' });
+        }
+        
+        const roomState = await loadRoomState(roomName);
+        res.json(roomState);
+    } catch (error) {
+        console.error('Error loading room:', error);
+        res.status(500).json({ error: 'Failed to load room' });
+    }
 });
 
 app.get('/api/status', (req, res) => {
+    const activeRooms = Array.from(roomStates.keys());
+    const totalClients = wss.clients.size;
+    const roomStats = {};
+    
+    activeRooms.forEach(roomName => {
+        const state = roomStates.get(roomName);
+        const users = roomUsers.get(roomName) || new Map();
+        roomStats[roomName] = {
+            elements: state ? state.elements.length : 0,
+            users: users.size
+        };
+    });
+    
     res.json({ 
         status: 'running', 
         timestamp: new Date().toISOString(),
-        connectedClients: wss.clients.size,
-        elements: canvasState.elements.length
+        totalClients: totalClients,
+        activeRooms: activeRooms.length,
+        rooms: roomStats
     });
 });
 
 // Start server
 server.listen(PORT, async () => {
-    await loadInitialState();
+    await ensureDataDir();
     console.log(`Server running on http://localhost:${PORT}`);
-    console.log('WebSocket server ready for multiplayer connections');
+    console.log('WebSocket server ready for multiplayer room connections');
     console.log('REST API endpoints:');
-    console.log('  GET /api/load - Load canvas data');
+    console.log('  GET /api/room/generate - Generate a random room name');
+    console.log('  GET /api/room/:roomName/load - Load room data');
     console.log('  GET /api/status - Server status');
 });

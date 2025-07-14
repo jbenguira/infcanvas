@@ -1,0 +1,50 @@
+{
+  "elements": [
+    {
+      "id": 1752527800060.3943,
+      "x": -623,
+      "y": -217.5,
+      "width": 80,
+      "height": 80,
+      "rotation": 0,
+      "color": "#FF9FF3",
+      "shape": "triangle",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_lcptlzs4v",
+      "userName": "Smart Deer"
+    },
+    {
+      "id": 1752527802023.4875,
+      "x": -375,
+      "y": -235.5,
+      "width": 80,
+      "height": 80,
+      "rotation": 0,
+      "color": "#96CEB4",
+      "shape": "star",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_lcptlzs4v",
+      "userName": "Smart Deer"
+    }
+  ],
+  "camera": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "layers": [
+    {
+      "id": "layer_0",
+      "name": "Layer 1",
+      "visible": true,
+      "locked": false,
+      "elements": [
+        1752527800060.3943,
+        1752527802023.4875
+      ]
+    }
+  ],
+  "timestamp": "2025-07-14T21:16:42.023Z"
+}
