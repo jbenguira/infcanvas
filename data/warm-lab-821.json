@@ -1,0 +1,35 @@
+{
+  "elements": [
+    {
+      "id": 1752528941578.748,
+      "x": -486,
+      "y": -112.5,
+      "width": 80,
+      "height": 80,
+      "rotation": 0,
+      "color": "#00FFFF",
+      "shape": "triangle",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_gf0hia3lv",
+      "userName": "Quick Lion"
+    }
+  ],
+  "camera": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "layers": [
+    {
+      "id": "layer_0",
+      "name": "Layer 1",
+      "visible": true,
+      "locked": false,
+      "elements": [
+        1752528941578.748
+      ]
+    }
+  ],
+  "timestamp": "2025-07-14T21:54:19.861Z"
+}

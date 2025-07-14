@@ -227,6 +227,7 @@ class InfiniteCanvas {
         this.elements = [];
         this.selectedElements.clear();
         this.selectedElement = null;
+        this.hideColorPicker();
         this.layers = [{
             id: 'layer_0',
             name: 'Layer 1',
@@ -444,6 +445,7 @@ class InfiniteCanvas {
         
         this.selectedElement = null;
         this.selectedElements.clear();
+        this.hideColorPicker();
         this.updateLayerUI();
         this.updateHistoryUI();
         this.render();
@@ -521,6 +523,12 @@ class InfiniteCanvas {
             return;
         }
         
+        const colorPickerHandle = this.getColorPickerHandle(this.mouse.x, this.mouse.y);
+        if (colorPickerHandle) {
+            this.openColorPicker();
+            return;
+        }
+        
         const deleteHandle = this.getDeleteHandle(this.mouse.x, this.mouse.y);
         if (deleteHandle) {
             this.deleteSelectedElements();
@@ -555,6 +563,7 @@ class InfiniteCanvas {
                     this.selectedElements.clear();
                     this.selectedElements.add(clickedElement);
                     this.selectedElement = clickedElement;
+                    this.hideColorPicker();
                 }
             }
             
@@ -573,6 +582,7 @@ class InfiniteCanvas {
             if (!e.ctrlKey && !e.metaKey) {
                 this.selectedElements.clear();
                 this.selectedElement = null;
+                this.hideColorPicker();
                 this.isSelecting = true;
                 this.mouse.selectionStart = { x: this.mouse.worldX, y: this.mouse.worldY };
             }
@@ -935,6 +945,13 @@ class InfiniteCanvas {
             const bringBackwardHandle = this.getBringBackwardHandle(this.mouse.x, this.mouse.y);
             if (bringBackwardHandle) {
                 this.bringBackward();
+                return;
+            }
+            
+            // Check for color picker handle
+            const colorPickerHandle = this.getColorPickerHandle(this.mouse.x, this.mouse.y);
+            if (colorPickerHandle) {
+                this.openColorPicker();
                 return;
             }
             
@@ -1362,16 +1379,18 @@ class InfiniteCanvas {
             const iconSpacing = isMobile ? 4 : 3;
             const iconColumn = right + (isMobile ? 15 : 12);
             
-            // Calculate positions for all three icons
-            const totalHeight = iconSize * 3 + iconSpacing * 2;
+            // Calculate positions for all four icons
+            const totalHeight = iconSize * 4 + iconSpacing * 3;
             const startY = top - (isMobile ? 5 : 2);
             
             const upArrowX = iconColumn;
             const upArrowY = startY;
+            const colorPickerX = iconColumn;
+            const colorPickerY = startY + iconSize + iconSpacing;
             const deleteX = iconColumn;
-            const deleteY = startY + iconSize + iconSpacing;
+            const deleteY = startY + (iconSize + iconSpacing) * 2;
             const downArrowX = iconColumn;
-            const downArrowY = startY + (iconSize + iconSpacing) * 2;
+            const downArrowY = startY + (iconSize + iconSpacing) * 3;
             
             // Common styling
             this.ctx.strokeStyle = '#fff';
@@ -1388,6 +1407,41 @@ class InfiniteCanvas {
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
             this.ctx.fillText('▲', upArrowX + iconSize/2, upArrowY + iconSize/2);
+            
+            // Color picker handle - Orange theme
+            this.ctx.fillStyle = '#fd7e14';
+            this.ctx.fillRect(colorPickerX, colorPickerY, iconSize, iconSize);
+            this.ctx.strokeRect(colorPickerX, colorPickerY, iconSize, iconSize);
+            
+            // Draw color picker icon (paint palette)
+            this.ctx.fillStyle = '#fff';
+            const colorScale = isMobile ? 1.2 : 0.8;
+            const colorCenterX = colorPickerX + iconSize/2;
+            const colorCenterY = colorPickerY + iconSize/2;
+            
+            // Draw palette outline (oval)
+            this.ctx.beginPath();
+            this.ctx.ellipse(colorCenterX, colorCenterY, 5 * colorScale, 4 * colorScale, 0, 0, Math.PI * 2);
+            this.ctx.fill();
+            
+            // Draw palette hole (thumb hole)
+            this.ctx.fillStyle = '#fd7e14';
+            this.ctx.beginPath();
+            this.ctx.arc(colorCenterX + 2 * colorScale, colorCenterY - 1 * colorScale, 1.5 * colorScale, 0, Math.PI * 2);
+            this.ctx.fill();
+            
+            // Draw small color dots on palette
+            this.ctx.fillStyle = '#fff';
+            const dotSize = 0.8 * colorScale;
+            this.ctx.beginPath();
+            this.ctx.arc(colorCenterX - 2 * colorScale, colorCenterY - 1 * colorScale, dotSize, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.beginPath();
+            this.ctx.arc(colorCenterX, colorCenterY + 1.5 * colorScale, dotSize, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.beginPath();
+            this.ctx.arc(colorCenterX - 1 * colorScale, colorCenterY + 1 * colorScale, dotSize, 0, Math.PI * 2);
+            this.ctx.fill();
             
             // Delete handle (trash icon) - Red theme
             this.ctx.fillStyle = '#dc3545';
@@ -1599,9 +1653,34 @@ class InfiniteCanvas {
         const startY = screenPos.y - h/2 - (isMobile ? 5 : 2);
         
         const downArrowX = iconColumn;
-        const downArrowY = startY + (iconSize + iconSpacing) * 2;
+        const downArrowY = startY + (iconSize + iconSpacing) * 3;
         
         return this.isPointInRect(screenX, screenY, downArrowX, downArrowY, iconSize, iconSize);
+    }
+    
+    getColorPickerHandle(screenX, screenY) {
+        if (this.selectedElements.size !== 1) return null;
+        
+        const element = this.selectedElement;
+        if (!this.isElementInVisibleLayer(element)) return null;
+        
+        const layer = this.layers.find(l => l.id === element.layerId);
+        if (layer && layer.locked) return null;
+        
+        const screenPos = this.worldToScreen(element.x, element.y);
+        const w = element.width * this.camera.zoom;
+        const h = element.height * this.camera.zoom;
+        
+        const isMobile = window.innerWidth <= 768;
+        const iconSize = isMobile ? 20 : 14;
+        const iconSpacing = isMobile ? 4 : 3;
+        const iconColumn = screenPos.x + w/2 + (isMobile ? 15 : 12);
+        const startY = screenPos.y - h/2 - (isMobile ? 5 : 2);
+        
+        const colorPickerX = iconColumn;
+        const colorPickerY = startY + iconSize + iconSpacing;
+        
+        return this.isPointInRect(screenX, screenY, colorPickerX, colorPickerY, iconSize, iconSize);
     }
 
     getDeleteHandle(screenX, screenY) {
@@ -1630,7 +1709,7 @@ class InfiniteCanvas {
             const startY = screenPos.y - h/2 - (isMobile ? 5 : 2);
             
             const deleteX = iconColumn;
-            const deleteY = startY + iconSize + iconSpacing;
+            const deleteY = startY + (iconSize + iconSpacing) * 2;
             
             return this.isPointInRect(screenX, screenY, deleteX, deleteY, iconSize, iconSize);
         } else {
@@ -1692,6 +1771,216 @@ class InfiniteCanvas {
         // Send update
         this.sendUpdate('update', this.selectedElement);
         this.saveToHistory('Send backward');
+        this.render();
+    }
+    
+    openColorPicker() {
+        if (!this.selectedElement) return;
+        
+        // Hide any existing color picker
+        this.hideColorPicker();
+        
+        // Create color palette container
+        const colorPalette = document.createElement('div');
+        colorPalette.id = 'colorPalette';
+        colorPalette.style.cssText = `
+            position: fixed;
+            background: white;
+            border: 2px solid #007bff;
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 2000;
+            width: 240px;
+        `;
+        
+        // Create header with title and close button
+        const header = document.createElement('div');
+        header.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #eee;
+        `;
+        
+        const title = document.createElement('div');
+        title.textContent = 'Choose Color';
+        title.style.cssText = `
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+        `;
+        
+        const closeButton = document.createElement('button');
+        closeButton.innerHTML = '×';
+        closeButton.style.cssText = `
+            background: #dc3545;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        `;
+        
+        closeButton.addEventListener('mouseenter', () => {
+            closeButton.style.background = '#c82333';
+        });
+        
+        closeButton.addEventListener('mouseleave', () => {
+            closeButton.style.background = '#dc3545';
+        });
+        
+        closeButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.hideColorPicker();
+        });
+        
+        header.appendChild(title);
+        header.appendChild(closeButton);
+        colorPalette.appendChild(header);
+        
+        // Create color grid container
+        const colorGrid = document.createElement('div');
+        colorGrid.style.cssText = `
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 4px;
+        `;
+        
+        // Color palette with 32 colors
+        const colors = [
+            '#FF0000', '#FF4500', '#FF8C00', '#FFD700',
+            '#ADFF2F', '#00FF00', '#00FF7F', '#00FFFF',
+            '#0080FF', '#0000FF', '#4169E1', '#8A2BE2',
+            '#FF1493', '#FF69B4', '#DC143C', '#B22222',
+            '#800000', '#A0522D', '#D2691E', '#CD853F',
+            '#DAA520', '#808000', '#556B2F', '#006400',
+            '#008080', '#4682B4', '#191970', '#800080',
+            '#000000', '#404040', '#808080', '#FFFFFF'
+        ];
+        
+        // Add color swatches
+        colors.forEach(color => {
+            const swatch = document.createElement('div');
+            swatch.style.cssText = `
+                width: 24px;
+                height: 24px;
+                background-color: ${color};
+                border: 2px solid ${color === this.selectedElement.color ? '#007bff' : '#ccc'};
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.2s;
+            `;
+            
+            swatch.addEventListener('mouseenter', () => {
+                swatch.style.transform = 'scale(1.1)';
+                swatch.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+            });
+            
+            swatch.addEventListener('mouseleave', () => {
+                swatch.style.transform = 'scale(1)';
+                swatch.style.boxShadow = 'none';
+            });
+            
+            swatch.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.applyColor(color);
+                // Update the border to show current selection
+                this.updateColorSwatchSelection(colorGrid, color);
+            });
+            
+            colorGrid.appendChild(swatch);
+        });
+        
+        // Add the color grid to the palette
+        colorPalette.appendChild(colorGrid);
+        
+        // Position the palette near the color picker icon
+        const element = this.selectedElement;
+        const screenPos = this.worldToScreen(element.x, element.y);
+        const w = element.width * this.camera.zoom;
+        const h = element.height * this.camera.zoom;
+        
+        const isMobile = window.innerWidth <= 768;
+        const iconSize = isMobile ? 20 : 14;
+        const iconSpacing = isMobile ? 4 : 3;
+        const iconColumn = screenPos.x + w/2 + (isMobile ? 15 : 12);
+        const startY = screenPos.y - h/2 - (isMobile ? 5 : 2);
+        const colorPickerY = startY + iconSize + iconSpacing;
+        
+        let paletteX = iconColumn + iconSize + 10;
+        let paletteY = colorPickerY;
+        
+        // Adjust position to keep palette on screen
+        const paletteWidth = 240;
+        const paletteHeight = 160; // Increased height for header + close button
+        
+        if (paletteX + paletteWidth > window.innerWidth) {
+            paletteX = iconColumn - paletteWidth - 10;
+        }
+        if (paletteY + paletteHeight > window.innerHeight) {
+            paletteY = window.innerHeight - paletteHeight - 10;
+        }
+        if (paletteX < 10) paletteX = 10;
+        if (paletteY < 10) paletteY = 10;
+        
+        colorPalette.style.left = paletteX + 'px';
+        colorPalette.style.top = paletteY + 'px';
+        
+        // Add to document
+        document.body.appendChild(colorPalette);
+    }
+    
+    updateColorSwatchSelection(colorGrid, selectedColor) {
+        // Update all swatches to show the new selection
+        const swatches = colorGrid.children;
+        for (let swatch of swatches) {
+            const swatchColor = swatch.style.backgroundColor;
+            // Convert RGB to hex to compare
+            const hexColor = this.rgbToHex(swatchColor);
+            if (hexColor.toUpperCase() === selectedColor.toUpperCase()) {
+                swatch.style.border = '2px solid #007bff';
+                swatch.style.boxShadow = '0 0 0 1px #007bff';
+            } else {
+                swatch.style.border = '2px solid #ccc';
+                swatch.style.boxShadow = 'none';
+            }
+        }
+    }
+    
+    rgbToHex(rgb) {
+        // Convert rgb(r, g, b) to hex
+        const result = rgb.match(/\d+/g);
+        if (!result) return rgb;
+        const [r, g, b] = result.map(Number);
+        return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+    }
+    
+    hideColorPicker() {
+        const existingPalette = document.getElementById('colorPalette');
+        if (existingPalette) {
+            document.body.removeChild(existingPalette);
+        }
+    }
+    
+    applyColor(color) {
+        if (!this.selectedElement) return;
+        
+        // Update element color
+        this.selectedElement.color = color;
+        
+        // Send update to server
+        this.sendUpdate('update', this.selectedElement);
+        this.saveToHistory(`Change color to ${color}`);
         this.render();
     }
 
@@ -1931,6 +2220,7 @@ class InfiniteCanvas {
             } else {
                 this.selectedElements.clear();
                 this.selectedElement = null;
+                this.hideColorPicker();
                 this.render();
             }
             return;
@@ -2749,6 +3039,8 @@ class InfiniteCanvas {
             tooltipText = 'Bring forward';
         } else if (this.getBringBackwardHandle(this.mouse.x, this.mouse.y)) {
             tooltipText = 'Send backward';
+        } else if (this.getColorPickerHandle(this.mouse.x, this.mouse.y)) {
+            tooltipText = 'Change color';
         } else if (this.getDeleteHandle(this.mouse.x, this.mouse.y)) {
             tooltipText = this.selectedElements.size > 1 ? 'Delete selection' : 'Delete element';
         } else if (this.getResizeHandle(this.mouse.x, this.mouse.y)) {
