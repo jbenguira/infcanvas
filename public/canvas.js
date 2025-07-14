@@ -29,6 +29,8 @@ class InfiniteCanvas {
         this.selectedShape = null;
         this.mode = 'select';
         this.isPlacing = false;
+        this.isSizing = false; // For drag-to-size when placing shapes
+        this.sizingShape = null; // Temporary shape being sized
         this.isResizing = false;
         this.isRotating = false;
         this.resizeHandle = null;
@@ -491,7 +493,7 @@ class InfiniteCanvas {
         if (e.button !== 0) return;
         
         if (this.isPlacing && this.selectedShape) {
-            this.placeShape(this.mouse.worldX, this.mouse.worldY);
+            this.startShapeSizing(this.mouse.worldX, this.mouse.worldY);
             return;
         }
         
@@ -602,10 +604,16 @@ class InfiniteCanvas {
         this.updateMousePosition(e);
         
         // Check for tooltips (only when not dragging)
-        if (!this.mouse.isDragging && !this.isResizing && !this.isRotating) {
+        if (!this.mouse.isDragging && !this.isResizing && !this.isRotating && !this.isSizing) {
             this.checkTooltips();
         } else {
             this.hideTooltip();
+        }
+        
+        if (this.isSizing && this.sizingShape) {
+            this.updateShapeSize();
+            this.render();
+            return;
         }
         
         if (this.isResizing && this.selectedElement && this.resizeHandle) {
@@ -692,6 +700,11 @@ class InfiniteCanvas {
     }
     
     handleMouseUp(e) {
+        if (this.isSizing && this.sizingShape) {
+            this.completeShapeSizing();
+            return;
+        }
+        
         if (this.isSelecting) {
             // Complete selection box
             this.completeSelection();
@@ -815,6 +828,12 @@ class InfiniteCanvas {
                 this.drawShapeUserLabel(element, screenPos, shapeUser);
             }
         });
+        
+        // Draw sizing shape if in sizing mode
+        if (this.isSizing && this.sizingShape) {
+            const screenPos = this.worldToScreen(this.sizingShape.x, this.sizingShape.y);
+            this.drawSizingShape(this.sizingShape, screenPos);
+        }
         
         // Draw selection box
         this.drawSelectionBox();
@@ -1212,6 +1231,57 @@ class InfiniteCanvas {
         this.ctx.restore();
     }
     
+    drawSizingShape(element, screenPos) {
+        // Draw the sizing shape with a dashed outline to indicate it's being created
+        this.ctx.save();
+        this.ctx.translate(screenPos.x, screenPos.y);
+        this.ctx.rotate(element.rotation || 0);
+        this.ctx.scale(this.camera.zoom, this.camera.zoom);
+        
+        // Semi-transparent fill
+        this.ctx.fillStyle = element.color + '80'; // Add transparency
+        this.ctx.strokeStyle = '#007bff';
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([5, 5]); // Dashed line to show it's being sized
+        
+        switch (element.shape) {
+            case 'square':
+            case 'rectangle':
+                this.ctx.fillRect(-element.width/2, -element.height/2, element.width, element.height);
+                this.ctx.strokeRect(-element.width/2, -element.height/2, element.width, element.height);
+                break;
+            case 'circle':
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, element.width/2, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.stroke();
+                break;
+            case 'triangle':
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, -element.height/2);
+                this.ctx.lineTo(-element.width/2, element.height/2);
+                this.ctx.lineTo(element.width/2, element.height/2);
+                this.ctx.closePath();
+                this.ctx.fill();
+                this.ctx.stroke();
+                break;
+            case 'star':
+                this.drawStar(0, 0, 5, element.width/2, element.width/4);
+                this.ctx.fill();
+                this.ctx.stroke();
+                break;
+        }
+        
+        // Show dimensions text
+        this.ctx.setLineDash([]); // Reset dash
+        this.ctx.fillStyle = '#007bff';
+        this.ctx.font = 'bold 12px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(`${Math.round(element.width)} × ${Math.round(element.height)}`, 0, element.height/2 + 20);
+        
+        this.ctx.restore();
+    }
+    
     drawStar(x, y, spikes, outerRadius, innerRadius) {
         let rot = Math.PI / 2 * 3;
         let step = Math.PI / spikes;
@@ -1293,11 +1363,122 @@ class InfiniteCanvas {
         this.render();
     }
     
+    startShapeSizing(x, y) {
+        // Create a temporary shape that will be sized by dragging
+        this.sizingShape = {
+            id: Date.now() + Math.random(), // Ensure uniqueness
+            x: x, // Start position
+            y: y, // Start position
+            startX: x, // Remember start position
+            startY: y, // Remember start position
+            width: 0, // Will be calculated based on drag
+            height: 0, // Will be calculated based on drag
+            rotation: 0,
+            color: this.getRandomColor(),
+            shape: this.selectedShape,
+            text: '',
+            layerId: this.activeLayerId
+        };
+        
+        this.isSizing = true;
+        this.canvas.className = 'placing';
+        document.getElementById('mode').textContent = `Drag to size ${this.selectedShape}`;
+    }
+    
+    updateShapeSize() {
+        if (!this.sizingShape) return;
+        
+        // Calculate width and height from start position to current mouse position
+        const startX = this.sizingShape.startX;
+        const startY = this.sizingShape.startY;
+        const currentX = this.mouse.worldX;
+        const currentY = this.mouse.worldY;
+        
+        // Calculate width and height (absolute values)
+        const width = Math.abs(currentX - startX);
+        const height = Math.abs(currentY - startY);
+        
+        // Set minimum size
+        const minSize = 10;
+        this.sizingShape.width = Math.max(width, minSize);
+        this.sizingShape.height = Math.max(height, minSize);
+        
+        // Update position to be the center between start and current positions
+        this.sizingShape.x = (startX + currentX) / 2;
+        this.sizingShape.y = (startY + currentY) / 2;
+        
+        // Apply snap to grid if enabled
+        if (this.snapToGrid) {
+            this.sizingShape.x = Math.round(this.sizingShape.x / this.gridSize) * this.gridSize;
+            this.sizingShape.y = Math.round(this.sizingShape.y / this.gridSize) * this.gridSize;
+            this.sizingShape.width = Math.round(this.sizingShape.width / this.gridSize) * this.gridSize;
+            this.sizingShape.height = Math.round(this.sizingShape.height / this.gridSize) * this.gridSize;
+        }
+    }
+    
+    completeShapeSizing() {
+        if (!this.sizingShape) return;
+        
+        // Don't create tiny shapes
+        if (this.sizingShape.width < 10 || this.sizingShape.height < 10) {
+            this.cancelShapeSizing();
+            return;
+        }
+        
+        // Create the final element
+        const element = {
+            id: this.sizingShape.id,
+            x: this.sizingShape.x,
+            y: this.sizingShape.y,
+            width: this.sizingShape.width,
+            height: this.sizingShape.height,
+            rotation: this.sizingShape.rotation,
+            color: this.sizingShape.color,
+            shape: this.sizingShape.shape,
+            text: this.sizingShape.text,
+            layerId: this.sizingShape.layerId
+        };
+        
+        // Add to elements and layer
+        this.elements.push(element);
+        this.addElementToLayer(element);
+        this.sendUpdate('add', element);
+        this.saveToHistory(`Add ${this.selectedShape}`);
+        
+        // Clean up sizing state
+        this.isSizing = false;
+        this.sizingShape = null;
+        
+        // Exit placement mode and select the new element
+        this.exitPlacementMode();
+        this.selectedElement = element;
+        this.selectedElements.clear();
+        this.selectedElements.add(element);
+        
+        // Send shape selection to others
+        this.sendUpdate('shapeSelect', { 
+            id: element.id,
+            action: 'selected'
+        });
+        
+        this.render();
+    }
+    
+    cancelShapeSizing() {
+        this.isSizing = false;
+        this.sizingShape = null;
+        this.canvas.className = 'placing';
+        document.getElementById('mode').textContent = `Click to place ${this.selectedShape} (click button again to exit)`;
+        this.render();
+    }
+    
     exitPlacementMode() {
         document.querySelectorAll('.shape-btn').forEach(btn => btn.classList.remove('active'));
         this.selectedShape = null;
         this.mode = 'select';
         this.isPlacing = false;
+        this.isSizing = false;
+        this.sizingShape = null;
         this.canvas.className = '';
         document.getElementById('mode').textContent = 'Select a shape or click existing shapes to edit';
     }
@@ -2215,7 +2396,9 @@ class InfiniteCanvas {
         
         // Handle escape key
         if (e.key === 'Escape') {
-            if (this.isPlacing) {
+            if (this.isSizing) {
+                this.cancelShapeSizing();
+            } else if (this.isPlacing) {
                 this.exitPlacementMode();
             } else {
                 this.selectedElements.clear();
@@ -2918,6 +3101,7 @@ class InfiniteCanvas {
     }
     
     getCurrentAction() {
+        if (this.isSizing) return `sizing ${this.selectedShape}`;
         if (this.isPlacing) return `placing ${this.selectedShape}`;
         if (this.isResizing) return 'resizing';
         if (this.isRotating) return 'rotating';

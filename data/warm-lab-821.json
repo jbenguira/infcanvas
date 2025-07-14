@@ -13,6 +13,90 @@
       "layerId": "layer_0",
       "userId": "user_gf0hia3lv",
       "userName": "Quick Lion"
+    },
+    {
+      "id": 1752530502611.6248,
+      "x": -741,
+      "y": -243.42000639485195,
+      "width": 188,
+      "height": 187.8400127897039,
+      "rotation": 0,
+      "color": "#FECA57",
+      "shape": "circle",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_30bauc3h4",
+      "userName": "Clever Falcon"
+    },
+    {
+      "id": 1752530505914.4517,
+      "x": -289,
+      "y": -254,
+      "width": 392,
+      "height": 109,
+      "rotation": 0,
+      "color": "#FF6B6B",
+      "shape": "square",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_30bauc3h4",
+      "userName": "Clever Falcon"
+    },
+    {
+      "id": 1752530510191.377,
+      "x": 31,
+      "y": 22.5,
+      "width": 592,
+      "height": 166,
+      "rotation": 0,
+      "color": "#45B7D1",
+      "shape": "square",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_30bauc3h4",
+      "userName": "Clever Falcon"
+    },
+    {
+      "id": 1752530512571.9607,
+      "x": -538,
+      "y": 90,
+      "width": 420,
+      "height": 65,
+      "rotation": 0,
+      "color": "#4ECDC4",
+      "shape": "rectangle",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_30bauc3h4",
+      "userName": "Clever Falcon"
+    },
+    {
+      "id": 1752530515335.6787,
+      "x": -521,
+      "y": 286.5,
+      "width": 212,
+      "height": 118,
+      "rotation": 0,
+      "color": "#FF6B6B",
+      "shape": "triangle",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_30bauc3h4",
+      "userName": "Clever Falcon"
+    },
+    {
+      "id": 1752530518399.7014,
+      "x": 219.5,
+      "y": -248.5,
+      "width": 293,
+      "height": 244,
+      "rotation": 0,
+      "color": "#FF6B6B",
+      "shape": "star",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_30bauc3h4",
+      "userName": "Clever Falcon"
     }
   ],
   "camera": {
@@ -27,9 +111,15 @@
       "visible": true,
       "locked": false,
       "elements": [
-        1752528941578.748
+        1752528941578.748,
+        1752530502611.6248,
+        1752530505914.4517,
+        1752530510191.377,
+        1752530512571.9607,
+        1752530515335.6787,
+        1752530518399.7014
       ]
     }
   ],
-  "timestamp": "2025-07-14T21:54:19.861Z"
+  "timestamp": "2025-07-14T22:02:12.497Z"
 }
