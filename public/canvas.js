@@ -20,7 +20,8 @@ class InfiniteCanvas {
             isDragging: false,
             dragStartX: 0,
             dragStartY: 0,
-            selectionStart: null // For selection box
+            selectionStart: null, // For selection box
+            dragButton: null // Track which button initiated the drag
         };
         
         this.gridSize = 50;
@@ -99,6 +100,7 @@ class InfiniteCanvas {
         this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
         this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
         this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault()); // Disable right-click menu
         this.canvas.addEventListener('wheel', (e) => this.handleWheel(e));
         
         // Touch events for mobile
@@ -298,6 +300,21 @@ class InfiniteCanvas {
     handleMouseDown(e) {
         this.updateMousePosition(e);
         
+        // Right-click for panning
+        if (e.button === 2) {
+            this.mouse.isDragging = true;
+            this.mouse.dragButton = 2;
+            this.mouse.dragStartX = this.mouse.x;
+            this.mouse.dragStartY = this.mouse.y;
+            this.mouse.cameraStartX = this.camera.x;
+            this.mouse.cameraStartY = this.camera.y;
+            this.canvas.style.cursor = 'grabbing';
+            return;
+        }
+        
+        // Left-click only for shape placement and interaction
+        if (e.button !== 0) return;
+        
         if (this.isPlacing && this.selectedShape) {
             this.placeShape(this.mouse.worldX, this.mouse.worldY);
             return;
@@ -357,6 +374,7 @@ class InfiniteCanvas {
             }
             
             this.mouse.isDragging = true;
+            this.mouse.dragButton = 0;
             this.mouse.dragStartX = this.mouse.worldX - clickedElement.x;
             this.mouse.dragStartY = this.mouse.worldY - clickedElement.y;
             
@@ -375,6 +393,7 @@ class InfiniteCanvas {
             }
             
             this.mouse.isDragging = true;
+            this.mouse.dragButton = 0;
             this.mouse.dragStartX = this.mouse.x;
             this.mouse.dragStartY = this.mouse.y;
             this.mouse.cameraStartX = this.camera.x;
@@ -419,7 +438,13 @@ class InfiniteCanvas {
         }
         
         if (this.mouse.isDragging) {
-            if (this.selectedElement && !this.isSelecting) {
+            if (this.mouse.dragButton === 2) {
+                // Right-click panning
+                const deltaX = (this.mouse.x - this.mouse.dragStartX) / this.camera.zoom;
+                const deltaY = (this.mouse.y - this.mouse.dragStartY) / this.camera.zoom;
+                this.camera.x = this.mouse.cameraStartX - deltaX;
+                this.camera.y = this.mouse.cameraStartY - deltaY;
+            } else if (this.selectedElement && !this.isSelecting) {
                 // Move selected elements
                 const newX = this.mouse.worldX - this.mouse.dragStartX;
                 const newY = this.mouse.worldY - this.mouse.dragStartY;
@@ -502,6 +527,8 @@ class InfiniteCanvas {
         }
         
         this.mouse.isDragging = false;
+        this.mouse.dragButton = null;
+        this.canvas.style.cursor = '';
         this.isResizing = false;
         this.isRotating = false;
         this.resizeHandle = null;
@@ -735,6 +762,8 @@ class InfiniteCanvas {
             
             // Clear any existing selection or dragging
             this.mouse.isDragging = false;
+        this.mouse.dragButton = null;
+        this.canvas.style.cursor = '';
             this.selectedElement = null;
             this.selectedElements.clear();
         }
@@ -865,6 +894,8 @@ class InfiniteCanvas {
             } else {
                 // Finish panning
                 this.mouse.isDragging = false;
+        this.mouse.dragButton = null;
+        this.canvas.style.cursor = '';
             }
             this.isPinching = false;
         } else if (this.touches.length === 1 && this.isPinching) {
