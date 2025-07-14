@@ -72,6 +72,15 @@ class InfiniteCanvas {
         this.lastTouchCenter = { x: 0, y: 0 };
         this.isPinching = false;
         
+        // Tooltip system
+        this.tooltip = {
+            visible: false,
+            text: '',
+            x: 0,
+            y: 0,
+            timer: null
+        };
+        
         this.init();
     }
     
@@ -336,6 +345,18 @@ class InfiniteCanvas {
             return;
         }
         
+        const bringForwardHandle = this.getBringForwardHandle(this.mouse.x, this.mouse.y);
+        if (bringForwardHandle) {
+            this.bringForward();
+            return;
+        }
+        
+        const bringBackwardHandle = this.getBringBackwardHandle(this.mouse.x, this.mouse.y);
+        if (bringBackwardHandle) {
+            this.bringBackward();
+            return;
+        }
+        
         const deleteHandle = this.getDeleteHandle(this.mouse.x, this.mouse.y);
         if (deleteHandle) {
             this.deleteSelectedElements();
@@ -405,6 +426,13 @@ class InfiniteCanvas {
     
     handleMouseMove(e) {
         this.updateMousePosition(e);
+        
+        // Check for tooltips (only when not dragging)
+        if (!this.mouse.isDragging && !this.isResizing && !this.isRotating) {
+            this.checkTooltips();
+        } else {
+            this.hideTooltip();
+        }
         
         if (this.isResizing && this.selectedElement && this.resizeHandle) {
             this.resizeElement(this.resizeHandle);
@@ -585,8 +613,23 @@ class InfiniteCanvas {
         
         this.drawGrid();
         
+        // Sort elements by layer order and z-index within each layer, then render
+        const sortedElements = [...this.elements].sort((a, b) => {
+            // First sort by layer order
+            const layerAIndex = this.layers.findIndex(l => l.id === a.layerId);
+            const layerBIndex = this.layers.findIndex(l => l.id === b.layerId);
+            if (layerAIndex !== layerBIndex) {
+                return layerAIndex - layerBIndex;
+            }
+            
+            // Then sort by z-index within the same layer
+            const zIndexA = a.zIndex || 0;
+            const zIndexB = b.zIndex || 0;
+            return zIndexA - zIndexB;
+        });
+        
         // Only render visible elements (performance optimization)
-        this.elements.forEach(element => {
+        sortedElements.forEach(element => {
             if (!this.isElementVisible(element) || !this.isElementInVisibleLayer(element)) return;
             
             const screenPos = this.worldToScreen(element.x, element.y);
@@ -611,6 +654,9 @@ class InfiniteCanvas {
         }
         
         this.drawOtherUsersCursors();
+        
+        // Draw tooltip (last so it appears on top)
+        this.drawTooltip();
     }
     
     // Performance optimization - check if element is visible
@@ -712,6 +758,19 @@ class InfiniteCanvas {
             if (rotateHandle) {
                 this.isRotating = true;
                 this.canvas.className = 'rotating';
+                return;
+            }
+            
+            // Check for z-index handles
+            const bringForwardHandle = this.getBringForwardHandle(this.mouse.x, this.mouse.y);
+            if (bringForwardHandle) {
+                this.bringForward();
+                return;
+            }
+            
+            const bringBackwardHandle = this.getBringBackwardHandle(this.mouse.x, this.mouse.y);
+            if (bringBackwardHandle) {
+                this.bringBackward();
                 return;
             }
             
@@ -1134,19 +1193,78 @@ class InfiniteCanvas {
             this.ctx.fill();
             this.ctx.stroke();
             
-            // Draw delete handle (trash icon)
-            this.ctx.fillStyle = '#dc3545';
-            const deleteX = right + (isMobile ? 20 : 15);
-            const deleteY = top - (isMobile ? 10 : 5);
-            this.ctx.fillRect(deleteX, deleteY, deleteSize, deleteSize);
-            this.ctx.strokeRect(deleteX, deleteY, deleteSize, deleteSize);
+            // Draw z-index and delete controls in a vertical column
+            const iconSize = isMobile ? 20 : 14;
+            const iconSpacing = isMobile ? 4 : 3;
+            const iconColumn = right + (isMobile ? 15 : 12);
             
-            // Draw trash icon details
+            // Calculate positions for all three icons
+            const totalHeight = iconSize * 3 + iconSpacing * 2;
+            const startY = top - (isMobile ? 5 : 2);
+            
+            const upArrowX = iconColumn;
+            const upArrowY = startY;
+            const deleteX = iconColumn;
+            const deleteY = startY + iconSize + iconSpacing;
+            const downArrowX = iconColumn;
+            const downArrowY = startY + (iconSize + iconSpacing) * 2;
+            
+            // Common styling
+            this.ctx.strokeStyle = '#fff';
+            this.ctx.lineWidth = 2;
+            
+            // Bring forward arrow (up) - Blue theme
+            this.ctx.fillStyle = '#007bff';
+            this.ctx.fillRect(upArrowX, upArrowY, iconSize, iconSize);
+            this.ctx.strokeRect(upArrowX, upArrowY, iconSize, iconSize);
+            
+            // Draw up arrow icon
             this.ctx.fillStyle = '#fff';
-            const iconScale = isMobile ? 1.6 : 1;
-            this.ctx.fillRect(deleteX + 2 * iconScale, deleteY + 3 * iconScale, 8 * iconScale, 1 * iconScale);
-            this.ctx.fillRect(deleteX + 3 * iconScale, deleteY + 5 * iconScale, 2 * iconScale, 5 * iconScale);
-            this.ctx.fillRect(deleteX + 7 * iconScale, deleteY + 5 * iconScale, 2 * iconScale, 5 * iconScale);
+            this.ctx.font = `bold ${isMobile ? 12 : 10}px Arial`;
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText('▲', upArrowX + iconSize/2, upArrowY + iconSize/2);
+            
+            // Delete handle (trash icon) - Red theme
+            this.ctx.fillStyle = '#dc3545';
+            this.ctx.fillRect(deleteX, deleteY, iconSize, iconSize);
+            this.ctx.strokeRect(deleteX, deleteY, iconSize, iconSize);
+            
+            // Draw trash icon with better proportions
+            this.ctx.fillStyle = '#fff';
+            const trashScale = isMobile ? 1.4 : 1.0;
+            const trashCenterX = deleteX + iconSize/2;
+            const trashCenterY = deleteY + iconSize/2;
+            
+            // Trash can body
+            const trashWidth = 8 * trashScale;
+            const trashHeight = 6 * trashScale;
+            const trashX = trashCenterX - trashWidth/2;
+            const trashY = trashCenterY - trashHeight/2 + 1 * trashScale;
+            this.ctx.fillRect(trashX, trashY, trashWidth, trashHeight);
+            
+            // Trash can lid
+            const lidWidth = 10 * trashScale;
+            const lidHeight = 2 * trashScale;
+            const lidX = trashCenterX - lidWidth/2;
+            const lidY = trashY - 1 * trashScale;
+            this.ctx.fillRect(lidX, lidY, lidWidth, lidHeight);
+            
+            // Trash can handle
+            const handleWidth = 4 * trashScale;
+            const handleHeight = 1 * trashScale;
+            const handleX = trashCenterX - handleWidth/2;
+            const handleY = lidY - 2 * trashScale;
+            this.ctx.fillRect(handleX, handleY, handleWidth, handleHeight);
+            
+            // Bring backward arrow (down) - Gray theme
+            this.ctx.fillStyle = '#6c757d';
+            this.ctx.fillRect(downArrowX, downArrowY, iconSize, iconSize);
+            this.ctx.strokeRect(downArrowX, downArrowY, iconSize, iconSize);
+            
+            // Draw down arrow icon
+            this.ctx.fillStyle = '#fff';
+            this.ctx.fillText('▼', downArrowX + iconSize/2, downArrowY + iconSize/2);
         } else {
             // Multi-element selection - draw rotation handle at selection center
             const selectionBounds = this.getSelectionBounds();
@@ -1273,6 +1391,55 @@ class InfiniteCanvas {
         return px >= x && px <= x + w && py >= y && py <= y + h;
     }
     
+    getBringForwardHandle(screenX, screenY) {
+        if (this.selectedElements.size !== 1) return null;
+        
+        const element = this.selectedElement;
+        if (!this.isElementInVisibleLayer(element)) return null;
+        
+        const layer = this.layers.find(l => l.id === element.layerId);
+        if (layer && layer.locked) return null;
+        
+        const screenPos = this.worldToScreen(element.x, element.y);
+        const w = element.width * this.camera.zoom;
+        const h = element.height * this.camera.zoom;
+        
+        const isMobile = window.innerWidth <= 768;
+        const iconSize = isMobile ? 20 : 14;
+        const iconColumn = screenPos.x + w/2 + (isMobile ? 15 : 12);
+        const startY = screenPos.y - h/2 - (isMobile ? 5 : 2);
+        
+        const upArrowX = iconColumn;
+        const upArrowY = startY;
+        
+        return this.isPointInRect(screenX, screenY, upArrowX, upArrowY, iconSize, iconSize);
+    }
+    
+    getBringBackwardHandle(screenX, screenY) {
+        if (this.selectedElements.size !== 1) return null;
+        
+        const element = this.selectedElement;
+        if (!this.isElementInVisibleLayer(element)) return null;
+        
+        const layer = this.layers.find(l => l.id === element.layerId);
+        if (layer && layer.locked) return null;
+        
+        const screenPos = this.worldToScreen(element.x, element.y);
+        const w = element.width * this.camera.zoom;
+        const h = element.height * this.camera.zoom;
+        
+        const isMobile = window.innerWidth <= 768;
+        const iconSize = isMobile ? 20 : 14;
+        const iconSpacing = isMobile ? 4 : 3;
+        const iconColumn = screenPos.x + w/2 + (isMobile ? 15 : 12);
+        const startY = screenPos.y - h/2 - (isMobile ? 5 : 2);
+        
+        const downArrowX = iconColumn;
+        const downArrowY = startY + (iconSize + iconSpacing) * 2;
+        
+        return this.isPointInRect(screenX, screenY, downArrowX, downArrowY, iconSize, iconSize);
+    }
+
     getDeleteHandle(screenX, screenY) {
         if (this.selectedElements.size === 0) return null;
         
@@ -1293,10 +1460,15 @@ class InfiniteCanvas {
             const w = element.width * this.camera.zoom;
             const h = element.height * this.camera.zoom;
             
-            const deleteX = screenPos.x + w/2 + deleteDistance;
-            const deleteY = screenPos.y - h/2 - deleteOffset;
+            const iconSize = isMobile ? 20 : 14;
+            const iconSpacing = isMobile ? 4 : 3;
+            const iconColumn = screenPos.x + w/2 + (isMobile ? 15 : 12);
+            const startY = screenPos.y - h/2 - (isMobile ? 5 : 2);
             
-            return this.isPointInRect(screenX, screenY, deleteX, deleteY, deleteSize, deleteSize);
+            const deleteX = iconColumn;
+            const deleteY = startY + iconSize + iconSpacing;
+            
+            return this.isPointInRect(screenX, screenY, deleteX, deleteY, iconSize, iconSize);
         } else {
             // Multi-element delete handle
             const selectionBounds = this.getSelectionBounds();
@@ -1309,6 +1481,56 @@ class InfiniteCanvas {
         }
     }
     
+    bringForward() {
+        if (!this.selectedElement) return;
+        
+        // Initialize zIndex if not present
+        if (this.selectedElement.zIndex === undefined) {
+            this.selectedElement.zIndex = 0;
+        }
+        
+        // Find other elements that might be at the same layer position
+        const sameLayerElements = this.elements.filter(el => 
+            el.layerId === this.selectedElement.layerId && el.id !== this.selectedElement.id
+        );
+        
+        // Find the highest zIndex in the same layer
+        const maxZIndex = Math.max(0, ...sameLayerElements.map(el => el.zIndex || 0));
+        
+        // Bring forward by setting zIndex higher than the current max
+        this.selectedElement.zIndex = maxZIndex + 1;
+        
+        // Send update
+        this.sendUpdate('update', this.selectedElement);
+        this.saveToHistory('Bring forward');
+        this.render();
+    }
+    
+    bringBackward() {
+        if (!this.selectedElement) return;
+        
+        // Initialize zIndex if not present
+        if (this.selectedElement.zIndex === undefined) {
+            this.selectedElement.zIndex = 0;
+        }
+        
+        // Find other elements that might be at the same layer position
+        const sameLayerElements = this.elements.filter(el => 
+            el.layerId === this.selectedElement.layerId && el.id !== this.selectedElement.id
+        );
+        
+        // Find the lowest zIndex in the same layer
+        const minZIndex = Math.min(0, ...sameLayerElements.map(el => el.zIndex || 0));
+        
+        // Bring backward by setting zIndex lower than the current min
+        this.selectedElement.zIndex = minZIndex - 1;
+        
+        // Send update
+        this.sendUpdate('update', this.selectedElement);
+        this.saveToHistory('Send backward');
+        this.render();
+    }
+
     deleteSelectedElements() {
         if (this.selectedElements.size === 0) return;
         
@@ -2215,6 +2437,93 @@ class InfiniteCanvas {
         this.otherUsers.forEach((user, userId) => {
             this.drawUserCursor(user);
         });
+    }
+    
+    showTooltip(text, x, y) {
+        if (this.tooltip.timer) {
+            clearTimeout(this.tooltip.timer);
+        }
+        
+        this.tooltip.timer = setTimeout(() => {
+            this.tooltip.visible = true;
+            this.tooltip.text = text;
+            this.tooltip.x = x;
+            this.tooltip.y = y;
+            this.render();
+        }, 500); // Show tooltip after 500ms delay
+    }
+    
+    hideTooltip() {
+        if (this.tooltip.timer) {
+            clearTimeout(this.tooltip.timer);
+            this.tooltip.timer = null;
+        }
+        if (this.tooltip.visible) {
+            this.tooltip.visible = false;
+            this.render();
+        }
+    }
+    
+    drawTooltip() {
+        if (!this.tooltip.visible) return;
+        
+        const padding = 8;
+        const fontSize = 12;
+        this.ctx.font = `${fontSize}px Arial`;
+        this.ctx.textAlign = 'left';
+        this.ctx.textBaseline = 'top';
+        
+        const textWidth = this.ctx.measureText(this.tooltip.text).width;
+        const textHeight = fontSize;
+        const boxWidth = textWidth + padding * 2;
+        const boxHeight = textHeight + padding * 2;
+        
+        // Adjust position to keep tooltip on screen
+        let tooltipX = this.tooltip.x + 10;
+        let tooltipY = this.tooltip.y - boxHeight - 10;
+        
+        if (tooltipX + boxWidth > this.canvas.width) {
+            tooltipX = this.tooltip.x - boxWidth - 10;
+        }
+        if (tooltipY < 0) {
+            tooltipY = this.tooltip.y + 20;
+        }
+        
+        // Draw tooltip background
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.fillRect(tooltipX, tooltipY, boxWidth, boxHeight);
+        
+        // Draw tooltip border
+        this.ctx.strokeStyle = '#555';
+        this.ctx.lineWidth = 1;
+        this.ctx.strokeRect(tooltipX, tooltipY, boxWidth, boxHeight);
+        
+        // Draw tooltip text
+        this.ctx.fillStyle = '#fff';
+        this.ctx.fillText(this.tooltip.text, tooltipX + padding, tooltipY + padding);
+    }
+    
+    checkTooltips() {
+        let tooltipText = null;
+        
+        // Check for handles and show appropriate tooltips
+        if (this.getRotateHandle(this.mouse.x, this.mouse.y)) {
+            tooltipText = this.selectedElements.size > 1 ? 'Rotate selection' : 'Rotate element';
+        } else if (this.getBringForwardHandle(this.mouse.x, this.mouse.y)) {
+            tooltipText = 'Bring forward';
+        } else if (this.getBringBackwardHandle(this.mouse.x, this.mouse.y)) {
+            tooltipText = 'Send backward';
+        } else if (this.getDeleteHandle(this.mouse.x, this.mouse.y)) {
+            tooltipText = this.selectedElements.size > 1 ? 'Delete selection' : 'Delete element';
+        } else if (this.getResizeHandle(this.mouse.x, this.mouse.y)) {
+            tooltipText = 'Resize element';
+        }
+        
+        if (tooltipText) {
+            this.showTooltip(tooltipText, this.mouse.x, this.mouse.y);
+        } else {
+            this.hideTooltip();
+        }
     }
     
     // Draw selection box
