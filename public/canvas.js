@@ -68,6 +68,12 @@ class InfiniteCanvas {
         this.roomPassword = null;
         this.isPasswordProtected = false;
         
+        // Animation system
+        this.isAnimating = false;
+        this.animationStartTime = 0;
+        this.animationDuration = 2000; // 2 seconds total
+        this.animatedElements = new Map(); // Track animation state per element
+        
         this.userId = 'user_' + Math.random().toString(36).substr(2, 9);
         this.userName = this.generateRandomName();
         this.otherUsers = new Map();
@@ -1275,10 +1281,25 @@ class InfiniteCanvas {
     }
     
     drawElement(element, screenPos) {
+        // Check for animation state
+        const animState = this.getElementAnimationState(element);
+        if (animState && !animState.visible) {
+            return; // Element not yet visible in animation
+        }
+        
         this.ctx.save();
-        this.ctx.translate(screenPos.x, screenPos.y);
-        this.ctx.rotate(element.rotation || 0);
-        this.ctx.scale(this.camera.zoom, this.camera.zoom);
+        
+        // Apply animation transformations if animating
+        if (animState) {
+            this.ctx.globalAlpha = animState.opacity;
+            this.ctx.translate(screenPos.x + animState.offsetX, screenPos.y + animState.offsetY);
+            this.ctx.rotate(element.rotation || 0);
+            this.ctx.scale(this.camera.zoom * animState.scale, this.camera.zoom * animState.scale);
+        } else {
+            this.ctx.translate(screenPos.x, screenPos.y);
+            this.ctx.rotate(element.rotation || 0);
+            this.ctx.scale(this.camera.zoom, this.camera.zoom);
+        }
         
         this.ctx.fillStyle = element.color;
         this.ctx.strokeStyle = element === this.selectedElement ? '#007bff' : '#333';
@@ -2860,6 +2881,131 @@ class InfiniteCanvas {
         this.pasteElements();
     }
     
+    // Loading animation system
+    startLoadingAnimation() {
+        this.isAnimating = true;
+        this.animationStartTime = Date.now();
+        this.animatedElements.clear();
+        
+        // Calculate animation delays for each element based on distance from center
+        const centerX = this.camera.x;
+        const centerY = this.camera.y;
+        
+        this.elements.forEach((element, index) => {
+            // Calculate distance from center for delay calculation
+            const distance = Math.sqrt(
+                Math.pow(element.x - centerX, 2) + 
+                Math.pow(element.y - centerY, 2)
+            );
+            
+            // Calculate angle from center to determine slide direction
+            const angle = Math.atan2(element.y - centerY, element.x - centerX);
+            
+            // Stagger animation based on distance and index
+            const baseDelay = (index * 80) + (distance * 0.1);
+            const animationDelay = Math.min(baseDelay, 1500); // Max 1.5s delay
+            
+            // Store animation data
+            this.animatedElements.set(element.id, {
+                element: element,
+                startTime: this.animationStartTime + animationDelay,
+                duration: 600, // Individual animation duration
+                startAngle: angle,
+                originalX: element.x,
+                originalY: element.y,
+                slideDistance: 300 // Distance to slide from
+            });
+        });
+        
+        console.log(`Starting loading animation for ${this.elements.length} elements`);
+        this.animateLoadingFrame();
+    }
+    
+    animateLoadingFrame() {
+        if (!this.isAnimating) return;
+        
+        const currentTime = Date.now();
+        const totalElapsed = currentTime - this.animationStartTime;
+        
+        // Check if animation is complete
+        let allAnimationsComplete = true;
+        this.animatedElements.forEach(animData => {
+            if (currentTime < animData.startTime + animData.duration) {
+                allAnimationsComplete = false;
+            }
+        });
+        
+        if (allAnimationsComplete && totalElapsed > 500) {
+            // Animation complete
+            this.isAnimating = false;
+            this.animatedElements.clear();
+            this.render();
+            console.log('Loading animation completed');
+            return;
+        }
+        
+        // Continue animation
+        this.render();
+        requestAnimationFrame(() => this.animateLoadingFrame());
+    }
+    
+    getElementAnimationState(element) {
+        if (!this.isAnimating) return null;
+        
+        const animData = this.animatedElements.get(element.id);
+        if (!animData) return null;
+        
+        const currentTime = Date.now();
+        const elapsed = currentTime - animData.startTime;
+        
+        // Not started yet
+        if (elapsed < 0) {
+            return {
+                opacity: 0,
+                scale: 0,
+                offsetX: 0,
+                offsetY: 0,
+                visible: false
+            };
+        }
+        
+        // Animation in progress
+        if (elapsed < animData.duration) {
+            const progress = elapsed / animData.duration;
+            const easeProgress = this.easeOutCubic(progress);
+            
+            // Calculate slide-in effect
+            const slideDistance = animData.slideDistance * (1 - easeProgress);
+            const offsetX = Math.cos(animData.startAngle) * slideDistance;
+            const offsetY = Math.sin(animData.startAngle) * slideDistance;
+            
+            return {
+                opacity: easeProgress,
+                scale: 0.3 + (0.7 * easeProgress), // Scale from 30% to 100%
+                offsetX: offsetX,
+                offsetY: offsetY,
+                visible: true
+            };
+        }
+        
+        // Animation complete
+        return {
+            opacity: 1,
+            scale: 1,
+            offsetX: 0,
+            offsetY: 0,
+            visible: true
+        };
+    }
+    
+    easeOutCubic(t) {
+        return 1 - Math.pow(1 - t, 3);
+    }
+    
+    easeInOutQuart(t) {
+        return t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
+    }
+    
     // Element nudging
     nudgeSelectedElements(direction, distance) {
         if (this.selectedElements.size === 0) return;
@@ -3022,7 +3168,14 @@ class InfiniteCanvas {
                 this.rebuildLayerElementRelationships();
                 
                 this.updateLayerUI();
-                this.render();
+                
+                // Start loading animation if there are elements
+                if (this.elements.length > 0) {
+                    this.startLoadingAnimation();
+                } else {
+                    this.render();
+                }
+                
                 console.log(`Loaded ${this.elements.length} elements and ${this.layers.length} layers from room ${this.roomName}`);
                 break;
                 

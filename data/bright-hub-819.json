@@ -1,0 +1,67 @@
+{
+  "elements": [
+    {
+      "id": 1752565575699.0576,
+      "x": -417.25,
+      "y": -85.625,
+      "width": 164.5,
+      "height": 144.25,
+      "rotation": 0,
+      "color": "#FECA57",
+      "shape": "triangle",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_mdlpsx9vu",
+      "userName": "Fast Wolf"
+    },
+    {
+      "id": 1752565581813.042,
+      "x": -2.5,
+      "y": -83.5,
+      "width": 147,
+      "height": 128,
+      "rotation": 0,
+      "color": "#FECA57",
+      "shape": "circle",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_mdlpsx9vu",
+      "userName": "Fast Wolf"
+    },
+    {
+      "id": 1752565583719.0532,
+      "x": -168.5,
+      "y": 165.5,
+      "width": 195,
+      "height": 244,
+      "rotation": 0,
+      "color": "#96CEB4",
+      "shape": "star",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_mdlpsx9vu",
+      "userName": "Fast Wolf"
+    }
+  ],
+  "camera": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "layers": [
+    {
+      "id": "layer_0",
+      "name": "Layer 1",
+      "visible": true,
+      "locked": false,
+      "elements": [
+        1752565575699.0576,
+        1752565581813.042,
+        1752565583719.0532
+      ]
+    }
+  ],
+  "password": "",
+  "isPasswordProtected": false,
+  "timestamp": "2025-07-15T07:46:24.300Z"
+}
