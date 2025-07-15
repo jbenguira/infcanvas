@@ -73,6 +73,7 @@ class InfiniteCanvas {
         this.animationStartTime = 0;
         this.animationDuration = 2000; // 2 seconds total
         this.animatedElements = new Map(); // Track animation state per element
+        this.hasPlayedInitialAnimation = false; // Track if initial animation has been played
         
         this.userId = 'user_' + Math.random().toString(36).substr(2, 9);
         this.userName = this.generateRandomName();
@@ -216,6 +217,7 @@ class InfiniteCanvas {
             // Reset connection state
             this.isConnected = false;
             this.isJoiningRoom = false;
+            this.hasPlayedInitialAnimation = false; // Reset animation flag for new room
             this.updateConnectionStatus('Switching rooms...');
             
             // Wait a moment for cleanup
@@ -1664,8 +1666,24 @@ class InfiniteCanvas {
     }
     
     getElementAtPosition(worldX, worldY) {
-        for (let i = this.elements.length - 1; i >= 0; i--) {
-            const element = this.elements[i];
+        // Sort elements by layer order and z-index within each layer (same as rendering order)
+        const sortedElements = [...this.elements].sort((a, b) => {
+            // First sort by layer order
+            const layerAIndex = this.layers.findIndex(l => l.id === a.layerId);
+            const layerBIndex = this.layers.findIndex(l => l.id === b.layerId);
+            if (layerAIndex !== layerBIndex) {
+                return layerAIndex - layerBIndex;
+            }
+            
+            // Then sort by z-index within the same layer
+            const zIndexA = a.zIndex || 0;
+            const zIndexB = b.zIndex || 0;
+            return zIndexA - zIndexB;
+        });
+        
+        // Check elements from top to bottom (reverse order of rendering)
+        for (let i = sortedElements.length - 1; i >= 0; i--) {
+            const element = sortedElements[i];
             
             // Skip elements in hidden or locked layers
             const layer = this.layers.find(l => l.id === element.layerId);
@@ -2415,8 +2433,56 @@ class InfiniteCanvas {
         }
         
         // Calculate new dimensions
-        const newWidth = Math.max(20, Math.abs(newRight - newLeft));
-        const newHeight = Math.max(20, Math.abs(newBottom - newTop));
+        let newWidth = Math.max(20, Math.abs(newRight - newLeft));
+        let newHeight = Math.max(20, Math.abs(newBottom - newTop));
+        
+        // For images, preserve aspect ratio
+        if (element.shape === 'image') {
+            const originalAspectRatio = element.width / element.height;
+            
+            // Determine which dimension to constrain based on the handle being dragged
+            if (handle === 'nw' || handle === 'se') {
+                // Diagonal resize - use the dimension that changed more
+                const widthChange = Math.abs(newWidth - element.width);
+                const heightChange = Math.abs(newHeight - element.height);
+                
+                if (widthChange > heightChange) {
+                    newHeight = newWidth / originalAspectRatio;
+                } else {
+                    newWidth = newHeight * originalAspectRatio;
+                }
+            } else if (handle === 'ne' || handle === 'sw') {
+                // Diagonal resize - use the dimension that changed more
+                const widthChange = Math.abs(newWidth - element.width);
+                const heightChange = Math.abs(newHeight - element.height);
+                
+                if (widthChange > heightChange) {
+                    newHeight = newWidth / originalAspectRatio;
+                } else {
+                    newWidth = newHeight * originalAspectRatio;
+                }
+            }
+            
+            // Ensure minimum size is respected while maintaining aspect ratio
+            const minSize = 20;
+            if (newWidth < minSize) {
+                newWidth = minSize;
+                newHeight = newWidth / originalAspectRatio;
+            }
+            if (newHeight < minSize) {
+                newHeight = minSize;
+                newWidth = newHeight * originalAspectRatio;
+            }
+            
+            // Recalculate bounds based on constrained dimensions
+            const centerX = (newLeft + newRight) / 2;
+            const centerY = (newTop + newBottom) / 2;
+            
+            newLeft = centerX - newWidth / 2;
+            newRight = centerX + newWidth / 2;
+            newTop = centerY - newHeight / 2;
+            newBottom = centerY + newHeight / 2;
+        }
         
         // Update element
         element.width = newWidth;
@@ -3169,8 +3235,9 @@ class InfiniteCanvas {
                 
                 this.updateLayerUI();
                 
-                // Start loading animation if there are elements
-                if (this.elements.length > 0) {
+                // Start loading animation only if there are elements AND this is the first time
+                if (this.elements.length > 0 && !this.hasPlayedInitialAnimation) {
+                    this.hasPlayedInitialAnimation = true;
                     this.startLoadingAnimation();
                 } else {
                     this.render();

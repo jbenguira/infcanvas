@@ -1,0 +1,54 @@
+{
+  "elements": [
+    {
+      "id": 1752573263503.099,
+      "x": 14.505074578067934,
+      "y": -31,
+      "width": 178.98985084386413,
+      "height": 177,
+      "rotation": 0,
+      "color": "#4ECDC4",
+      "shape": "triangle",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_n9eanpgpv",
+      "userName": "Calm Deer"
+    },
+    {
+      "id": 1752585129864.4058,
+      "x": 193.9051233349392,
+      "y": -40.235812969788924,
+      "width": 650.3051179915778,
+      "height": 650.3051179915778,
+      "rotation": -0.002664788976824317,
+      "shape": "image",
+      "filename": "1752585129848-8efr6b.png",
+      "originalName": "tÃ©lÃ©chargement (6).png",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_n9eanpgpv",
+      "userName": "Calm Deer",
+      "zIndex": -1
+    }
+  ],
+  "camera": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "layers": [
+    {
+      "id": "layer_0",
+      "name": "Layer 1",
+      "visible": true,
+      "locked": false,
+      "elements": [
+        1752573263503.099,
+        1752585129864.4058
+      ]
+    }
+  ],
+  "password": "",
+  "isPasswordProtected": false,
+  "timestamp": "2025-07-15T13:28:21.148Z"
+}
