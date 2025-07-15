@@ -309,6 +309,10 @@ class InfiniteCanvas {
         // Export controls
         document.getElementById('exportBtn').addEventListener('click', () => this.showExportDialog());
         
+        // Image upload controls
+        document.getElementById('imageUploadBtn').addEventListener('click', () => this.triggerImageUpload());
+        document.getElementById('imageInput').addEventListener('change', (e) => this.handleImageUpload(e));
+        
         // Snap to grid toggle
         document.getElementById('snapToggle').addEventListener('click', () => this.toggleSnapToGrid());
         
@@ -317,6 +321,9 @@ class InfiniteCanvas {
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        
+        // Paste event for images
+        document.addEventListener('paste', (e) => this.handlePaste(e));
         
         document.getElementById('labelInput').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
@@ -1303,6 +1310,9 @@ class InfiniteCanvas {
                 this.ctx.fill();
                 this.ctx.stroke();
                 break;
+            case 'image':
+                this.drawImage(element);
+                break;
         }
         
         if (element.text) {
@@ -1313,6 +1323,56 @@ class InfiniteCanvas {
         }
         
         this.ctx.restore();
+    }
+    
+    drawImage(element) {
+        // Images are cached for performance
+        if (!this.imageCache) {
+            this.imageCache = new Map();
+        }
+        
+        const cacheKey = element.filename;
+        let img = this.imageCache.get(cacheKey);
+        
+        if (!img) {
+            // Create new image and cache it
+            img = new Image();
+            img.onload = () => {
+                // Re-render when image loads
+                this.render();
+            };
+            img.onerror = () => {
+                console.error('Failed to load image:', element.filename);
+            };
+            img.src = `/api/uploads/${element.filename}`;
+            this.imageCache.set(cacheKey, img);
+        }
+        
+        // Only draw if image is loaded
+        if (img.complete && img.naturalWidth > 0) {
+            this.ctx.drawImage(img, -element.width/2, -element.height/2, element.width, element.height);
+            
+            // Draw border if selected
+            if (element === this.selectedElement) {
+                this.ctx.strokeStyle = '#007bff';
+                this.ctx.lineWidth = 3;
+                this.ctx.strokeRect(-element.width/2, -element.height/2, element.width, element.height);
+            }
+        } else {
+            // Draw placeholder while loading
+            this.ctx.fillStyle = '#f0f0f0';
+            this.ctx.fillRect(-element.width/2, -element.height/2, element.width, element.height);
+            this.ctx.strokeStyle = '#ccc';
+            this.ctx.lineWidth = 1;
+            this.ctx.strokeRect(-element.width/2, -element.height/2, element.width, element.height);
+            
+            // Draw loading text
+            this.ctx.fillStyle = '#666';
+            this.ctx.font = '14px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText('Loading...', 0, 0);
+        }
     }
     
     drawSizingShape(element, screenPos) {
@@ -2529,6 +2589,7 @@ class InfiniteCanvas {
                     e.preventDefault();
                     break;
                 case 'v':
+                    // Regular Ctrl+V for pasting elements (images handled by paste event)
                     this.pasteElements();
                     e.preventDefault();
                     break;
@@ -2663,6 +2724,135 @@ class InfiniteCanvas {
         this.render();
         
         console.log(`Pasted ${this.clipboard.length} elements`);
+    }
+    
+    // Image handling methods
+    triggerImageUpload() {
+        document.getElementById('imageInput').click();
+    }
+    
+    async handleImageUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        if (!file.type.startsWith('image/')) {
+            alert('Please select a valid image file.');
+            return;
+        }
+        
+        // Check file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            alert('Image file is too large. Maximum size is 10MB.');
+            return;
+        }
+        
+        await this.processImageFile(file);
+        
+        // Clear the input so the same file can be uploaded again
+        event.target.value = '';
+    }
+    
+    async handlePaste(event) {
+        // Only handle paste if not editing a label
+        if (this.isEditingLabel) return;
+        
+        const items = event.clipboardData?.items;
+        if (!items) return;
+        
+        for (let item of items) {
+            if (item.type.startsWith('image/')) {
+                event.preventDefault();
+                const file = item.getAsFile();
+                if (file) {
+                    await this.processImageFile(file);
+                }
+                break;
+            }
+        }
+    }
+    
+    async processImageFile(file) {
+        try {
+            // Create FormData for file upload
+            const formData = new FormData();
+            formData.append('image', file);
+            formData.append('roomName', this.roomName);
+            
+            // Upload file to server
+            const response = await fetch('/api/upload/image', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to upload image');
+            }
+            
+            const data = await response.json();
+            
+            // Create image element on canvas
+            await this.createImageElement(data.filename, data.originalName);
+            
+        } catch (error) {
+            console.error('Error processing image:', error);
+            alert('Failed to upload image. Please try again.');
+        }
+    }
+    
+    async createImageElement(filename, originalName) {
+        // Create an HTML Image to get dimensions
+        const img = new Image();
+        
+        return new Promise((resolve, reject) => {
+            img.onload = () => {
+                // Calculate scaled dimensions (max 400px on either side)
+                const maxSize = 400;
+                let width = img.width;
+                let height = img.height;
+                
+                if (width > maxSize || height > maxSize) {
+                    const scale = Math.min(maxSize / width, maxSize / height);
+                    width = width * scale;
+                    height = height * scale;
+                }
+                
+                // Create the image element
+                const element = {
+                    id: Date.now() + Math.random(),
+                    x: this.camera.x, // Place at camera center
+                    y: this.camera.y,
+                    width: width,
+                    height: height,
+                    rotation: 0,
+                    shape: 'image',
+                    filename: filename,
+                    originalName: originalName,
+                    text: '',
+                    layerId: this.activeLayerId
+                };
+                
+                // Add to canvas
+                this.elements.push(element);
+                this.addElementToLayer(element);
+                this.sendUpdate('add', element);
+                this.saveToHistory(`Add image: ${originalName}`);
+                
+                // Select the new image
+                this.selectedElements.clear();
+                this.selectedElements.add(element);
+                this.selectedElement = element;
+                
+                this.render();
+                console.log(`Added image: ${originalName} (${width}x${height})`);
+                resolve();
+            };
+            
+            img.onerror = () => {
+                reject(new Error('Failed to load image'));
+            };
+            
+            img.src = `/api/uploads/${filename}`;
+        });
     }
     
     duplicateSelectedElements() {
@@ -3921,6 +4111,15 @@ class InfiniteCanvas {
                 this.drawStarOnContext(ctx, 0, 0, 5, element.width/2, element.width/4);
                 ctx.fill();
                 ctx.stroke();
+                break;
+            case 'image':
+                // Draw image on export context
+                if (this.imageCache && this.imageCache.has(element.filename)) {
+                    const img = this.imageCache.get(element.filename);
+                    if (img.complete && img.naturalWidth > 0) {
+                        ctx.drawImage(img, -element.width/2, -element.height/2, element.width, element.height);
+                    }
+                }
                 break;
         }
         

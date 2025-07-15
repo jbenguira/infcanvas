@@ -44,17 +44,18 @@
     },
     {
       "id": 1752530510191.377,
-      "x": 31,
-      "y": 22.5,
+      "x": 121,
+      "y": -100.5,
       "width": 592,
       "height": 166,
       "rotation": 0,
-      "color": "#45B7D1",
+      "color": "#808000",
       "shape": "square",
       "text": "",
       "layerId": "layer_0",
-      "userId": "user_30bauc3h4",
-      "userName": "Clever Falcon"
+      "userId": "user_383rxstcg",
+      "userName": "Wise Falcon",
+      "zIndex": -1
     },
     {
       "id": 1752530512571.9607,
@@ -86,8 +87,8 @@
     },
     {
       "id": 1752530518399.7014,
-      "x": 219.5,
-      "y": -248.5,
+      "x": 195.5,
+      "y": -199.5,
       "width": 293,
       "height": 244,
       "rotation": 0,
@@ -95,8 +96,23 @@
       "shape": "star",
       "text": "",
       "layerId": "layer_0",
-      "userId": "user_30bauc3h4",
-      "userName": "Clever Falcon"
+      "userId": "user_383rxstcg",
+      "userName": "Wise Falcon"
+    },
+    {
+      "id": 1752564810981.0637,
+      "x": 828.8679939175851,
+      "y": 120.0318286612353,
+      "width": 624.4225710014009,
+      "height": 635.9217046984832,
+      "rotation": 0,
+      "shape": "image",
+      "filename": "1752564810965-wstfec.png",
+      "originalName": "tÃ©lÃ©chargement (6).png",
+      "text": "",
+      "layerId": "layer_0",
+      "userId": "user_c7ruubn3n",
+      "userName": "Swift Bear"
     }
   ],
   "camera": {
@@ -117,9 +133,23 @@
         1752530510191.377,
         1752530512571.9607,
         1752530515335.6787,
-        1752530518399.7014
-      ]
+        1752530518399.7014,
+        1752564810981.0637
+      ],
+      "userId": "user_383rxstcg",
+      "userName": "Wise Falcon"
+    },
+    {
+      "id": "layer_1752564380846",
+      "name": "Layer 2",
+      "visible": true,
+      "locked": false,
+      "elements": [],
+      "userId": "user_383rxstcg",
+      "userName": "Wise Falcon"
     }
   ],
-  "timestamp": "2025-07-14T22:02:12.497Z"
+  "timestamp": "2025-07-15T07:33:36.628Z",
+  "password": "",
+  "isPasswordProtected": false
 }

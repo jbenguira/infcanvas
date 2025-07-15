@@ -4,14 +4,51 @@ const fs = require('fs').promises;
 const path = require('path');
 const WebSocket = require('ws');
 const http = require('http');
+const multer = require('multer');
 
 const app = express();
 const PORT = 3001;
 const DATA_DIR = path.join(__dirname, 'data');
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, './public')));
+
+// Serve uploaded images
+app.use('/api/uploads', express.static(UPLOADS_DIR));
+
+// Configure multer for image uploads
+const storage = multer.diskStorage({
+    destination: async (req, file, cb) => {
+        // Ensure uploads directory exists
+        await fs.mkdir(UPLOADS_DIR, { recursive: true });
+        cb(null, UPLOADS_DIR);
+    },
+    filename: (req, file, cb) => {
+        // Generate unique filename
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(2, 8);
+        const ext = path.extname(file.originalname);
+        const filename = `${timestamp}-${random}${ext}`;
+        cb(null, filename);
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        // Only allow image files
+        if (file.mimetype.startsWith('image/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only image files are allowed'), false);
+        }
+    }
+});
 
 // Create HTTP server
 const server = http.createServer(app);
@@ -418,6 +455,34 @@ wss.on('connection', (ws) => {
     ws.on('error', (error) => {
         console.error('WebSocket error:', error);
     });
+});
+
+// Image upload endpoint
+app.post('/api/upload/image', upload.single('image'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No image file provided' });
+        }
+        
+        const roomName = req.body.roomName;
+        if (!validateRoomName(roomName)) {
+            return res.status(400).json({ error: 'Invalid room name' });
+        }
+        
+        console.log(`Image uploaded for room "${roomName}": ${req.file.originalname} -> ${req.file.filename}`);
+        
+        res.json({
+            success: true,
+            filename: req.file.filename,
+            originalName: req.file.originalname,
+            size: req.file.size,
+            mimetype: req.file.mimetype
+        });
+        
+    } catch (error) {
+        console.error('Error uploading image:', error);
+        res.status(500).json({ error: 'Failed to upload image' });
+    }
 });
 
 // REST API endpoints

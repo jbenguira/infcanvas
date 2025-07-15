@@ -21,6 +21,7 @@
             <button id="undoBtn" class="action-btn" title="Undo (Ctrl+Z)">↶</button>
             <button id="redoBtn" class="action-btn" title="Redo (Ctrl+Y)">↷</button>
             <button id="snapToggle" class="action-btn" title="Snap to Grid (Ctrl+G)">Snap</button>
+            <button id="imageUploadBtn" class="action-btn" title="Upload Image">🖼️</button>
             <button id="exportBtn" class="action-btn" title="Export Canvas">💾</button>
             <button id="clearAll" class="clear-btn" title="Clear All Shapes">🗑️ Clear All</button>
         </div>
@@ -58,7 +59,7 @@
                     Ctrl+Z: Undo<br>
                     Ctrl+Y: Redo<br>
                     Ctrl+C: Copy<br>
-                    Ctrl+V: Paste<br>
+                    Ctrl+V: Paste / Paste Image<br>
                     Ctrl+A: Select All<br>
                     Ctrl+D: Duplicate<br>
                     Del: Delete<br>
@@ -69,6 +70,7 @@
         </div>
     </div>
     <input type="text" id="labelInput" placeholder="Enter label..." style="display: none;">
+    <input type="file" id="imageInput" accept="image/*" style="display: none;">
     
     <!-- Export Dialog -->
     <div id="exportDialog" class="modal" style="display: none;">
