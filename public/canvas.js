@@ -1368,7 +1368,7 @@ class InfiniteCanvas {
             img.onerror = () => {
                 console.error('Failed to load image:', element.filename);
             };
-            img.src = `/api/uploads/${element.filename}`;
+            img.src = `/api/uploads/${this.roomName}/${element.filename}`;
             this.imageCache.set(cacheKey, img);
         }
         
@@ -2863,9 +2863,9 @@ class InfiniteCanvas {
             return;
         }
         
-        // Check file size (max 10MB)
-        if (file.size > 10 * 1024 * 1024) {
-            alert('Image file is too large. Maximum size is 10MB.');
+        // Check file size (max 3MB)
+        if (file.size > 3 * 1024 * 1024) {
+            alert('Image file is too large. Maximum size is 3MB.');
             return;
         }
         
@@ -2977,7 +2977,7 @@ class InfiniteCanvas {
                 reject(new Error('Failed to load image'));
             };
             
-            img.src = `/api/uploads/${filename}`;
+            img.src = `/api/uploads/${this.roomName}/${filename}`;
         });
     }
     

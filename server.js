@@ -5,6 +5,7 @@ const path = require('path');
 const WebSocket = require('ws');
 const http = require('http');
 const multer = require('multer');
+const cron = require('node-cron');
 
 const app = express();
 const PORT = 3001;
@@ -15,13 +16,22 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, './public')));
 
-// Serve uploaded images
+// Validate room name to prevent path traversal and other attacks
+function validateRoomName(roomName) {
+    if (!roomName || typeof roomName !== 'string') return false;
+    // Only allow letters, numbers, and hyphens
+    const validPattern = /^[a-zA-Z0-9-]+$/;
+    // Must be between 3 and 50 characters
+    return validPattern.test(roomName) && roomName.length >= 3 && roomName.length <= 50;
+}
+
+// Serve uploaded images from room-specific directories
 app.use('/api/uploads', express.static(UPLOADS_DIR));
 
 // Configure multer for image uploads
 const storage = multer.diskStorage({
     destination: async (req, file, cb) => {
-        // Ensure uploads directory exists
+        // Use temporary uploads directory initially
         await fs.mkdir(UPLOADS_DIR, { recursive: true });
         cb(null, UPLOADS_DIR);
     },
@@ -38,7 +48,7 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB limit
+        fileSize: 3 * 1024 * 1024 // 3MB limit
     },
     fileFilter: (req, file, cb) => {
         // Only allow JPG and PNG files for security reasons
@@ -66,15 +76,6 @@ let roomStates = new Map();
 
 // Store connected users per room
 let roomUsers = new Map();
-
-// Validate room name to prevent path traversal and other attacks
-function validateRoomName(roomName) {
-    if (!roomName || typeof roomName !== 'string') return false;
-    // Only allow letters, numbers, and hyphens
-    const validPattern = /^[a-zA-Z0-9-]+$/;
-    // Must be between 3 and 50 characters
-    return validPattern.test(roomName) && roomName.length >= 3 && roomName.length <= 50;
-}
 
 // Generate a safe random room name
 function generateRoomName() {
@@ -108,7 +109,8 @@ function initRoomState() {
         }],
         password: '',
         isPasswordProtected: false,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        lastModified: new Date().toISOString()
     };
 }
 
@@ -162,6 +164,11 @@ async function loadRoomState(roomName) {
             loadedState.isPasswordProtected = loadedState.password.length > 0;
         }
         
+        // Ensure lastModified field exists (backward compatibility)
+        if (loadedState.lastModified === undefined) {
+            loadedState.lastModified = new Date().toISOString();
+        }
+        
         roomStates.set(roomName, loadedState);
         console.log(`Loaded room "${roomName}" with ${loadedState.elements.length} elements and ${loadedState.layers.length} layers`);
         return loadedState;
@@ -188,10 +195,77 @@ async function saveRoomState(roomName) {
         const state = roomStates.get(roomName);
         if (!state) return;
         
+        // Update last modified timestamp
+        state.lastModified = new Date().toISOString();
+        
         const filePath = getRoomFilePath(roomName);
         await fs.writeFile(filePath, JSON.stringify(state, null, 2));
     } catch (error) {
         console.error(`Error saving room "${roomName}":`, error);
+    }
+}
+
+// Cleanup old rooms and their assets
+async function cleanupOldRooms() {
+    const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+    const now = Date.now();
+    
+    try {
+        console.log('Starting room cleanup...');
+        
+        // Get all room files
+        const files = await fs.readdir(DATA_DIR);
+        const roomFiles = files.filter(file => file.endsWith('.json'));
+        
+        let cleanedCount = 0;
+        
+        for (const file of roomFiles) {
+            const roomName = path.basename(file, '.json');
+            const filePath = path.join(DATA_DIR, file);
+            
+            try {
+                // Read room data
+                const data = await fs.readFile(filePath, 'utf8');
+                const roomData = JSON.parse(data);
+                
+                // Check if room is older than 30 days
+                const lastModified = roomData.lastModified || roomData.timestamp;
+                if (lastModified) {
+                    const roomAge = now - new Date(lastModified).getTime();
+                    
+                    if (roomAge > maxAge) {
+                        console.log(`Cleaning up old room: ${roomName} (${Math.floor(roomAge / (24 * 60 * 60 * 1000))} days old)`);
+                        
+                        // Delete room file
+                        await fs.unlink(filePath);
+                        
+                        // Delete room's upload directory
+                        const roomUploadsDir = path.join(UPLOADS_DIR, roomName);
+                        try {
+                            await fs.rmdir(roomUploadsDir, { recursive: true });
+                            console.log(`Deleted uploads directory for room: ${roomName}`);
+                        } catch (err) {
+                            if (err.code !== 'ENOENT') {
+                                console.error(`Failed to delete uploads directory for room ${roomName}:`, err);
+                            }
+                        }
+                        
+                        // Remove from memory if loaded
+                        if (roomStates.has(roomName)) {
+                            roomStates.delete(roomName);
+                        }
+                        
+                        cleanedCount++;
+                    }
+                }
+            } catch (error) {
+                console.error(`Error processing room file ${file}:`, error);
+            }
+        }
+        
+        console.log(`Room cleanup completed. Cleaned up ${cleanedCount} old rooms.`);
+    } catch (error) {
+        console.error('Error during room cleanup:', error);
     }
 }
 
@@ -471,8 +545,18 @@ app.post('/api/upload/image', upload.single('image'), async (req, res) => {
         
         const roomName = req.body.roomName;
         if (!validateRoomName(roomName)) {
+            // Clean up uploaded file if room name is invalid
+            await fs.unlink(req.file.path).catch(() => {});
             return res.status(400).json({ error: 'Invalid room name' });
         }
+        
+        // Create room-specific uploads directory
+        const roomUploadsDir = path.join(UPLOADS_DIR, roomName);
+        await fs.mkdir(roomUploadsDir, { recursive: true });
+        
+        // Move file to room-specific directory
+        const newFilePath = path.join(roomUploadsDir, req.file.filename);
+        await fs.rename(req.file.path, newFilePath);
         
         console.log(`Image uploaded for room "${roomName}": ${req.file.originalname} -> ${req.file.filename}`);
         
@@ -486,6 +570,10 @@ app.post('/api/upload/image', upload.single('image'), async (req, res) => {
         
     } catch (error) {
         console.error('Error uploading image:', error);
+        // Clean up uploaded file on error
+        if (req.file && req.file.path) {
+            await fs.unlink(req.file.path).catch(() => {});
+        }
         res.status(500).json({ error: 'Failed to upload image' });
     }
 });
@@ -598,6 +686,17 @@ app.get('/api/status', (req, res) => {
     });
 });
 
+// Manual cleanup endpoint for testing
+app.post('/api/cleanup', async (req, res) => {
+    try {
+        await cleanupOldRooms();
+        res.json({ success: true, message: 'Cleanup completed' });
+    } catch (error) {
+        console.error('Manual cleanup failed:', error);
+        res.status(500).json({ success: false, error: 'Cleanup failed' });
+    }
+});
+
 // Start server
 server.listen(PORT, async () => {
     await ensureDataDir();
@@ -607,4 +706,12 @@ server.listen(PORT, async () => {
     console.log('  GET /api/room/generate - Generate a random room name');
     console.log('  GET /api/room/:roomName/load - Load room data');
     console.log('  GET /api/status - Server status');
+    
+    // Schedule daily cleanup at 2 AM
+    cron.schedule('0 2 * * *', () => {
+        console.log('Running scheduled room cleanup...');
+        cleanupOldRooms();
+    });
+    
+    console.log('Daily room cleanup scheduled at 2:00 AM');
 });
