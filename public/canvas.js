@@ -630,9 +630,10 @@ class InfiniteCanvas {
     handleMouseMove(e) {
         this.updateMousePosition(e);
         
-        // Check for tooltips (only when not dragging)
+        // Check for tooltips and cursors (only when not dragging)
         if (!this.mouse.isDragging && !this.isResizing && !this.isRotating && !this.isSizing) {
             this.checkTooltips();
+            this.updateCursor();
         } else {
             this.hideTooltip();
         }
@@ -1741,12 +1742,28 @@ class InfiniteCanvas {
             this.drawHandle(right - handleSize/2, bottom - handleSize/2, handleSize);
             
             // Draw rotation handle
-            this.ctx.fillStyle = '#28a745';
             const rotateY = top - (isMobile ? 30 : 20);
+            const isHoveringRotate = this.getRotateHandle(this.mouse.x, this.mouse.y);
+            
+            // Add glow effect when hovering
+            if (isHoveringRotate) {
+                this.ctx.shadowColor = '#28a745';
+                this.ctx.shadowBlur = 8;
+                this.ctx.shadowOffsetX = 0;
+                this.ctx.shadowOffsetY = 0;
+            }
+            
+            this.ctx.fillStyle = isHoveringRotate ? '#34ce57' : '#28a745';
+            this.ctx.strokeStyle = '#fff';
+            this.ctx.lineWidth = 2;
             this.ctx.beginPath();
             this.ctx.arc(screenPos.x, rotateY, rotateRadius, 0, Math.PI * 2);
             this.ctx.fill();
             this.ctx.stroke();
+            
+            // Reset shadow
+            this.ctx.shadowColor = 'transparent';
+            this.ctx.shadowBlur = 0;
             
             // Draw z-index and delete controls in a vertical column
             const iconSize = isMobile ? 20 : 14;
@@ -1863,18 +1880,31 @@ class InfiniteCanvas {
             const centerScreen = this.worldToScreen(selectionBounds.centerX, selectionBounds.centerY);
             
             // Draw rotation handle at selection center
-            this.ctx.fillStyle = '#28a745';
-            this.ctx.strokeStyle = '#fff';
-            this.ctx.lineWidth = 1;
-            
             const rotateDistance = isMobile ? 30 : 20;
             const rotateX = centerScreen.x;
             const rotateY = centerScreen.y - selectionBounds.height * this.camera.zoom / 2 - rotateDistance;
+            const isHoveringRotate = this.getRotateHandle(this.mouse.x, this.mouse.y);
+            
+            // Add glow effect when hovering
+            if (isHoveringRotate) {
+                this.ctx.shadowColor = '#28a745';
+                this.ctx.shadowBlur = 8;
+                this.ctx.shadowOffsetX = 0;
+                this.ctx.shadowOffsetY = 0;
+            }
+            
+            this.ctx.fillStyle = isHoveringRotate ? '#34ce57' : '#28a745';
+            this.ctx.strokeStyle = '#fff';
+            this.ctx.lineWidth = 2;
             
             this.ctx.beginPath();
             this.ctx.arc(rotateX, rotateY, rotateRadius, 0, Math.PI * 2);
             this.ctx.fill();
             this.ctx.stroke();
+            
+            // Reset shadow
+            this.ctx.shadowColor = 'transparent';
+            this.ctx.shadowBlur = 0;
             
             // Draw delete handle for multi-selection
             this.ctx.fillStyle = '#dc3545';
@@ -1944,6 +1974,7 @@ class InfiniteCanvas {
         
         const isMobile = window.innerWidth <= 768;
         const rotateRadius = isMobile ? 12 : 6;
+        const rotateHitRadius = isMobile ? 20 : 15; // Larger hit area for easier clicking
         const rotateDistance = isMobile ? 30 : 20;
         
         if (this.selectedElements.size === 1) {
@@ -1963,7 +1994,7 @@ class InfiniteCanvas {
             const dx = screenX - rotateX;
             const dy = screenY - rotateY;
             
-            return (dx * dx + dy * dy <= rotateRadius * rotateRadius);
+            return (dx * dx + dy * dy <= rotateHitRadius * rotateHitRadius);
         } else {
             // Multi-element rotation handle (at selection center)
             const selectionBounds = this.getSelectionBounds();
@@ -1975,7 +2006,7 @@ class InfiniteCanvas {
             const dx = screenX - rotateX;
             const dy = screenY - rotateY;
             
-            return (dx * dx + dy * dy <= rotateRadius * rotateRadius);
+            return (dx * dx + dy * dy <= rotateHitRadius * rotateHitRadius);
         }
     }
     
@@ -3891,6 +3922,24 @@ class InfiniteCanvas {
         } else {
             this.hideTooltip();
         }
+    }
+    
+    updateCursor() {
+        let cursor = '';
+        
+        // Check for rotation handle
+        if (this.getRotateHandle(this.mouse.x, this.mouse.y)) {
+            cursor = 'crosshair';
+        } else if (this.getResizeHandle(this.mouse.x, this.mouse.y)) {
+            cursor = 'nw-resize';
+        } else if (this.getBringForwardHandle(this.mouse.x, this.mouse.y) || 
+                   this.getBringBackwardHandle(this.mouse.x, this.mouse.y) ||
+                   this.getColorPickerHandle(this.mouse.x, this.mouse.y) ||
+                   this.getDeleteHandle(this.mouse.x, this.mouse.y)) {
+            cursor = 'pointer';
+        }
+        
+        this.canvas.style.cursor = cursor;
     }
     
     // Draw selection box
