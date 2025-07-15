@@ -41,11 +41,16 @@ const upload = multer({
         fileSize: 10 * 1024 * 1024 // 10MB limit
     },
     fileFilter: (req, file, cb) => {
-        // Only allow image files
-        if (file.mimetype.startsWith('image/')) {
+        // Only allow JPG and PNG files for security reasons
+        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+        const allowedExtensions = ['.jpg', '.jpeg', '.png'];
+        
+        const fileExtension = path.extname(file.originalname).toLowerCase();
+        
+        if (allowedMimeTypes.includes(file.mimetype) && allowedExtensions.includes(fileExtension)) {
             cb(null, true);
         } else {
-            cb(new Error('Only image files are allowed'), false);
+            cb(new Error('Only JPG and PNG image files are allowed'), false);
         }
     }
 });

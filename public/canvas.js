@@ -2853,8 +2853,13 @@ class InfiniteCanvas {
         const file = event.target.files[0];
         if (!file) return;
         
-        if (!file.type.startsWith('image/')) {
-            alert('Please select a valid image file.');
+        // Only allow JPG and PNG files for security reasons
+        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+        const allowedExtensions = ['.jpg', '.jpeg', '.png'];
+        const fileExtension = file.name.toLowerCase().split('.').pop();
+        
+        if (!allowedMimeTypes.includes(file.type) || !allowedExtensions.includes('.' + fileExtension)) {
+            alert('Only JPG and PNG image files are allowed.');
             return;
         }
         
@@ -2878,7 +2883,10 @@ class InfiniteCanvas {
         if (!items) return;
         
         for (let item of items) {
-            if (item.type.startsWith('image/')) {
+            // Only allow JPG and PNG files for security reasons
+            const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+            
+            if (allowedMimeTypes.includes(item.type)) {
                 event.preventDefault();
                 const file = item.getAsFile();
                 if (file) {
