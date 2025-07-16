@@ -899,13 +899,10 @@ class InfiniteCanvas {
             
             const screenPos = this.worldToScreen(element.x, element.y);
             this.drawElement(element, screenPos);
-            
-            // Draw user name if someone is manipulating this shape
-            const shapeUser = this.shapeUsers.get(element.id);
-            if (shapeUser && shapeUser.userId !== this.userId) {
-                this.drawShapeUserLabel(element, screenPos, shapeUser);
-            }
         });
+        
+        // Draw user labels for manipulated shapes (one label per user)
+        this.drawUserLabelsForShapes();
         
         // Draw sizing shape if in sizing mode
         if (this.isSizing && this.sizingShape) {
@@ -5236,20 +5233,65 @@ class InfiniteCanvas {
         document.getElementById('userCount').textContent = `👥 ${count}`;
     }
     
-    drawShapeUserLabel(element, screenPos, shapeUser) {
-        // Calculate label position above the shape
-        const labelY = screenPos.y - (element.height * this.camera.zoom / 2) - 25;
-        const labelText = `${shapeUser.userName} - ${shapeUser.action}`;
+    drawUserLabelsForShapes() {
+        // Group shapes by user
+        const userShapes = new Map();
         
+        this.shapeUsers.forEach((shapeUser, shapeId) => {
+            if (shapeUser.userId !== this.userId) {
+                if (!userShapes.has(shapeUser.userId)) {
+                    userShapes.set(shapeUser.userId, {
+                        user: shapeUser,
+                        shapes: []
+                    });
+                }
+                
+                const element = this.elements.find(el => el.id === shapeId);
+                if (element && this.isElementVisible(element) && this.isElementInVisibleLayer(element)) {
+                    userShapes.get(shapeUser.userId).shapes.push(element);
+                }
+            }
+        });
+        
+        // Draw one label per user
+        userShapes.forEach((userInfo, userId) => {
+            if (userInfo.shapes.length > 0) {
+                // Calculate center position of all shapes for this user
+                let centerX = 0, centerY = 0;
+                let minY = Infinity;
+                
+                userInfo.shapes.forEach(shape => {
+                    const screenPos = this.worldToScreen(shape.x, shape.y);
+                    centerX += screenPos.x;
+                    centerY += screenPos.y;
+                    minY = Math.min(minY, screenPos.y - (shape.height * this.camera.zoom / 2));
+                });
+                
+                centerX /= userInfo.shapes.length;
+                centerY /= userInfo.shapes.length;
+                
+                // Draw label above the topmost shape
+                const labelY = minY - 25;
+                const shapeCount = userInfo.shapes.length;
+                const labelText = shapeCount === 1 ? 
+                    `${userInfo.user.userName} - ${userInfo.user.action}` : 
+                    `${userInfo.user.userName} - ${userInfo.user.action} (${shapeCount} shapes)`;
+                
+                this.drawShapeUserLabel(centerX, labelY, labelText, userInfo.user.color);
+            }
+        });
+    }
+    
+    drawShapeUserLabel(x, y, labelText, color) {
         // Measure text width
         this.ctx.font = '12px Arial';
         const textWidth = this.ctx.measureText(labelText).width;
         
         // Draw background
-        this.ctx.fillStyle = shapeUser.color;
+        this.ctx.fillStyle = color;
         this.ctx.fillRect(
-            screenPos.x - textWidth/2 - 6,
-            labelY - 2,
+            x - textWidth/2 - 6,
+            y - 2,
             textWidth + 12,
             16
         );
@@ -5258,8 +5300,8 @@ class InfiniteCanvas {
         this.ctx.strokeStyle = 'white';
         this.ctx.lineWidth = 1;
         this.ctx.strokeRect(
-            screenPos.x - textWidth/2 - 6,
-            labelY - 2,
+            x - textWidth/2 - 6,
+            y - 2,
             textWidth + 12,
             16
         );
@@ -5268,14 +5310,14 @@ class InfiniteCanvas {
         this.ctx.fillStyle = 'white';
         this.ctx.font = '12px Arial';
         this.ctx.textAlign = 'center';
-        this.ctx.fillText(labelText, screenPos.x, labelY + 10);
+        this.ctx.fillText(labelText, x, y + 10);
         
-        // Draw small arrow pointing to shape
-        this.ctx.fillStyle = shapeUser.color;
+        // Draw small arrow pointing down
+        this.ctx.fillStyle = color;
         this.ctx.beginPath();
-        this.ctx.moveTo(screenPos.x - 4, labelY + 14);
-        this.ctx.lineTo(screenPos.x + 4, labelY + 14);
-        this.ctx.lineTo(screenPos.x, labelY + 20);
+        this.ctx.moveTo(x - 4, y + 14);
+        this.ctx.lineTo(x + 4, y + 14);
+        this.ctx.lineTo(x, y + 20);
         this.ctx.closePath();
         this.ctx.fill();
         this.ctx.stroke();
