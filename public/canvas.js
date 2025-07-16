@@ -913,11 +913,9 @@ class InfiniteCanvas {
         // Draw selection box
         this.drawSelectionBox();
         
-        // Draw multi-selection highlights
-        this.drawMultiSelectionHighlights();
-        
-        // Draw resize handles for selection (single element or multi-element)
-        if (this.selectedElements.size > 0) {
+        // Draw multi-selection highlights and resize handles only if not manipulated by other users
+        if (this.selectedElements.size > 0 && !this.isSelectedElementsManipulatedByOthers()) {
+            this.drawMultiSelectionHighlights();
             this.drawResizeHandles();
         }
         
@@ -1931,6 +1929,9 @@ class InfiniteCanvas {
     
     drawResizeHandles() {
         if (this.selectedElements.size === 0) return;
+        
+        // Don't draw resize handles if any selected element is being manipulated by other users
+        if (this.isSelectedElementsManipulatedByOthers()) return;
         
         const isMobile = window.innerWidth <= 768;
         const handleSize = isMobile ? 16 : 8;
@@ -5033,6 +5034,17 @@ class InfiniteCanvas {
         });
     }
     
+    isSelectedElementsManipulatedByOthers() {
+        // Check if any of the currently selected elements are being manipulated by other users
+        for (const element of this.selectedElements) {
+            const shapeUser = this.shapeUsers.get(element.id);
+            if (shapeUser && shapeUser.userId !== this.userId) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
     showTooltip(text, x, y) {
         if (this.tooltip.timer) {
             clearTimeout(this.tooltip.timer);
@@ -5176,6 +5188,10 @@ class InfiniteCanvas {
         
         this.selectedElements.forEach(element => {
             if (element === this.selectedElement) return; // Skip primary selection
+            
+            // Skip elements being manipulated by other users
+            const shapeUser = this.shapeUsers.get(element.id);
+            if (shapeUser && shapeUser.userId !== this.userId) return;
             
             const screenPos = this.worldToScreen(element.x, element.y);
             const w = element.width * this.camera.zoom;
