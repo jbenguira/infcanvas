@@ -2,6 +2,8 @@
 
 A multiplayer web-based infinite canvas application that allows multiple users to collaboratively create, edit, and manage shapes on an unlimited scrollable grid in real-time. Built with HTML5 Canvas, WebSocket, and Node.js.
 
+🌐 **[Try the Live Demo](https://infcanvas-u3.vm.elestio.app)**
+
 ## 🚀 Features
 
 ### Core Canvas Features
